@@ -23,7 +23,6 @@ async def run_claude(
         permission_mode="acceptEdits",
         setting_sources=[],
         max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "30")),
-        model=os.getenv("CLAUDE_MODEL") or os.getenv("ANTHROPIC_MODEL") or None,
     )
     # 聊天模式不开放工具；代码模式明确要求聚焦任务且不自行创建提交。
     prompt = instruction if chat else (
