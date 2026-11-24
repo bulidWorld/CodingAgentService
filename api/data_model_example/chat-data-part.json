@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": "chat-001",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "messageId": "message-chat-001",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "data": {
+            "type": "chat",
+            "message": "用简洁的中文解释什么是 Kubernetes Deployment。"
+          }
+        }
+      ]
+    }
+  }
+}

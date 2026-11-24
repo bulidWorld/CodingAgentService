@@ -1,0 +1,51 @@
+name: Coding and Chat Agent
+description: >-
+  Supports repository bug fixing with local commits and general chat without
+  requiring a Git repository.
+version: 0.1.0
+default_input_modes:
+  - text/plain
+  - application/json
+default_output_modes:
+  - text/plain
+capabilities:
+  streaming: true
+  extended_agent_card: true
+security_scheme_name: bearerAuth
+security_scheme:
+  http_auth_security_scheme:
+    scheme: Bearer
+security_requirements:
+  - bearerAuth: []
+skills:
+  - id: chat
+    name: Chat
+    description: >-
+      Answer questions and discuss topics without requiring a code repository.
+    tags: [chat, assistant]
+    examples:
+      - Explain what a Kubernetes Deployment does.
+    input_modes: [text/plain, application/json]
+    output_modes: [text/plain]
+  - id: fix_repository_bug
+    name: Fix a repository bug
+    description: >-
+      Check out a Git repository branch, fix a reported bug with Claude,
+      and commit the code changes.
+    tags: [coding, bug-fix, git, claude]
+    examples:
+      - Fix the null pointer error when parsing an empty configuration file.
+    input_modes: [text/plain, application/json]
+    output_modes: [text/plain]
+extended_skills:
+  - id: authenticated_repository_repair
+    name: Authenticated repository repair
+    description: >-
+      Submit bug-fix tasks for repositories that require Git credentials
+      configured in the service runtime. The service returns commit metadata
+      in the task artifact.
+    tags: [private-repository, authenticated-git]
+    examples:
+      - Fix the pagination bug in the private repository branch release/2.x.
+    input_modes: [text/plain, application/json]
+    output_modes: [text/plain]

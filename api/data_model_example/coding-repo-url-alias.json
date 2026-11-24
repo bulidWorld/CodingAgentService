@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": "coding-002",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "messageId": "message-coding-002",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "data": {
+            "type": "coding",
+            "repo_url": "https://github.com/example/project.git",
+            "branch": "main",
+            "task": "修复解析空配置时的空指针异常，并补充回归测试。"
+          }
+        }
+      ]
+    }
+  }
+}
