@@ -42,7 +42,7 @@ curl http://localhost:8000/ \
 
 公开卡片声明支持 `extendedAgentCard`；扩展卡片额外描述了使用服务端 Git 凭据访问私有仓库的能力。能力描述来自 YAML 配置，并由 A2A SDK 提供的请求处理器通过 RPC 返回。
 
-常用配置：`PUBLIC_BASE_URL`、`WORKSPACE_ROOT`、`MAX_CONCURRENT_TASKS`、`CLAUDE_MODEL`、`CLAUDE_MAX_TURNS`、`GIT_AUTHOR_NAME`、`GIT_AUTHOR_EMAIL` 和 `ALLOWED_GIT_HOSTS`。`ALLOWED_GIT_HOSTS` 可限制任务允许访问的 Git 主机。
+常用配置：`PUBLIC_BASE_URL`、`WORKSPACE_ROOT`、`SERVICE_NAME`、`PROJECTS_ROOT`、`MAX_CONCURRENT_TASKS`、`CLAUDE_MODEL`、`CLAUDE_MAX_TURNS`、`GIT_AUTHOR_NAME`、`GIT_AUTHOR_EMAIL` 和 `ALLOWED_GIT_HOSTS`。Coding 仓库按远程 URL 生成稳定目录，默认保存在 `/var/service/{SERVICE_NAME}/share/projects`；首次任务会克隆，后续任务会复用该仓库并更新到指定分支的远端最新版本。`PROJECTS_ROOT` 可覆盖根目录。`ALLOWED_GIT_HOSTS` 可限制任务允许访问的 Git 主机。
 
 ## 提交任务
 

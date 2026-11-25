@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import shutil
 import uuid
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from a2a.helpers import (
     get_data_parts,
@@ -78,6 +80,11 @@ class AgentRouter(AgentExecutor):
     """根据任务类型分发聊天或代码任务，并统一处理并发、取消和清理。"""
 
     def __init__(self) -> None:
+        service_name = os.getenv("SERVICE_NAME", "coding-agent-service")
+        self.projects_root = Path(
+            os.getenv("PROJECTS_ROOT", f"/var/service/{service_name}/share/projects")
+        ).resolve()
+        self.projects_root.mkdir(parents=True, exist_ok=True)
         self.workspace = Path(os.getenv("WORKSPACE_ROOT", "./work")).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self._semaphore = asyncio.Semaphore(max(1, int(os.getenv("MAX_CONCURRENT_TASKS", "2"))))
@@ -100,10 +107,21 @@ class AgentRouter(AgentExecutor):
         # cancel() 通过任务 ID 设置事件；执行结束后必须移除，避免字典持续增长。
         self._cancel_events[task.id] = cancel_event
         workdir: Path | None = None
+        task_type: str | None = None
         try:
             task_type, repository, branch, instruction = _task_fields(context)
-            directory_name = f"chat-{uuid.uuid4().hex}" if task_type == "chat" else uuid.uuid4().hex
-            workdir = self.workspace / directory_name
+            if task_type == "chat":
+                workdir = self.workspace / f"chat-{uuid.uuid4().hex}"
+            else:
+                assert repository is not None
+                parsed = urlparse(repository)
+                repo_name = Path(unquote(parsed.path.rstrip("/")).removesuffix(".git")).name
+                if not repo_name:
+                    repo_name = "repository"
+                # URL-derived folder names are human-readable; a suffix avoids collisions
+                # between different hosts or owners that use the same repository name.
+                repo_key = hashlib.sha256(repository.rstrip("/").removesuffix(".git").encode()).hexdigest()[:10]
+                workdir = self.projects_root / f"{repo_name}-{repo_key}"
 
             async with self._semaphore:
                 logger.info(
@@ -138,7 +156,9 @@ class AgentRouter(AgentExecutor):
             )
         finally:
             self._cancel_events.pop(task.id, None)
-            if workdir is not None and workdir.exists():
+            # Coding workspaces are persistent projects. Chat workspaces remain ephemeral
+            # and are cleaned up after each request.
+            if workdir is not None and task_type == "chat" and workdir.exists():
                 await asyncio.to_thread(shutil.rmtree, workdir, True)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

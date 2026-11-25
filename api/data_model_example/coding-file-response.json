@@ -1,0 +1,36 @@
+{
+  "jsonrpc": "2.0",
+  "id": "coding-file-001",
+  "result": {
+    "task": {
+      "id": "task-coding-file-001",
+      "contextId": "context-coding-file-001",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "message": {
+          "messageId": "message-status-coding-file-001",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {
+              "text": "已修复空配置解析异常，并补充回归测试。\n\n分支：main\nCommit：a1b2c3d4e5f6789012345678901234567890abcd\n修改文件：\n- src/config/parser.py\n- tests/test_parser.py\n- docs/fix-summary.md"
+            }
+          ]
+        }
+      },
+      "artifacts": [
+        {
+          "artifactId": "artifact-coding-file-001",
+          "name": "fix-summary.md",
+          "description": "空配置现在会被解析为空对象，不再触发空指针异常。",
+          "parts": [
+            {
+              "filename": "fix-summary.md",
+              "mediaType": "text/markdown",
+              "text": "# 修复说明\n\n空配置现在会被解析为空对象，不再触发空指针异常。\n\n新增回归测试覆盖空字符串和空文件两种输入。\n"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

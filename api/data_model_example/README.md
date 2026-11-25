@@ -21,6 +21,7 @@ Authorization: Bearer <A2A_API_TOKEN>
 
 ## 示例
 
+- [`coding-file-response.json`](coding-file-response.json)：coding 任务完成响应示例；响应放在 `result.task`，代码修改结果和 Git 信息放在 `status.message`，每个生成或修改的 `.md` 文件单独作为 artifact 返回。artifact 的 `name` 和 part 的 `filename` 使用文件名，`mediaType` 为 `text/markdown`，`text` 是不含代码围栏的原始文件内容。
 - [`chat-data-part.json`](chat-data-part.json)：chat，通过 `data.message` 传入问题，不需要仓库。
 - [`chat-text-part.json`](chat-text-part.json)：任务类型放在 DataPart，问题放在另一个 text part。
 - [`chat-json-text-part.json`](chat-json-text-part.json)：把 JSON 对象编码为 text part。

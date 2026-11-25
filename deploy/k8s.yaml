@@ -41,6 +41,8 @@ spec:
             - name: claude-home
               mountPath: /var/service/coding-agent-service/share/.claude
               readOnly: true
+            - name: claude-home
+              mountPath: /var/service/coding-agent-service/share/projects
       volumes:
         - name: claude-home
           persistentVolumeClaim:
