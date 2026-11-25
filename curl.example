@@ -1,7 +1,7 @@
 # Coding Agent Service A2A 1.0 JSON-RPC examples
 # Set these in your shell before running the commands:
 export A2A_URL=http://127.0.0.1:8000
-export A2A_API_TOKEN='change-me-to-a-long-random-value'
+export A2A_API_TOKEN='replace-with-a-random-token-of-at-least-24-characters'
 export TASK_ID='task-id-returned-by-SendMessage'
 
 # Public Agent Card (no authentication)

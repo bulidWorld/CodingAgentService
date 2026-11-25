@@ -3,10 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+
+logger = logging.getLogger(__name__)
+
+
+def _log_cli_stderr(line: str) -> None:
+    """将 CLI 诊断纳入服务日志。"""
+    if line.startswith("[claude-code:unrecognized_model] "):
+        # CLI 可能无法识别网关模型名，但仍会发出请求并完成任务。
+        logger.debug("Claude Code CLI: %s", line)
+    else:
+        logger.warning("Claude Code CLI: %s", line)
 
 
 async def run_claude(
@@ -19,6 +31,7 @@ async def run_claude(
     """在指定工作目录执行提示词，返回 SDK 最终结果文本。"""
     options = ClaudeAgentOptions(
         cwd=str(working_path),
+        stderr=_log_cli_stderr,
         allowed_tools=[] if chat else ["Read", "Edit", "Write", "Glob", "Grep", "Bash"],
         permission_mode="acceptEdits",
         setting_sources=[],

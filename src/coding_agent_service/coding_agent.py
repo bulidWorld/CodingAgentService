@@ -118,6 +118,10 @@ class CodingAgent:
         await asyncio.to_thread(_git, None, "check-ref-format", "--branch", branch)
 
         await asyncio.to_thread(_clone_repository, repository, branch, workdir)
+        logger.info(
+            "Coding workspace ready",
+            extra={"log_type": "business", "workspace": str(workdir), "branch": branch},
+        )
         if cancel_event.is_set():
             raise asyncio.CancelledError
         await asyncio.to_thread(_git, workdir, "checkout", branch)
