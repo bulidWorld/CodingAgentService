@@ -1,0 +1,35 @@
+{
+  "jsonrpc": "2.0",
+  "id": "chat-001",
+  "result": {
+    "task": {
+      "id": "task-chat-001",
+      "contextId": "context-chat-001",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "message": {
+          "messageId": "message-status-chat-001",
+          "role": "ROLE_AGENT",
+          "parts": [
+            {"text": "聊天完成"}
+          ]
+        }
+      },
+      "artifacts": [
+        {
+          "artifactId": "artifact-chat-001",
+          "parts": [
+            {
+              "text": "Kubernetes Deployment 负责维护指定数量的 Pod 副本，并支持滚动更新和回滚。"
+            },
+            {
+              "data": {
+                "sessionId": "bdb3899d-57ab-40ea-87b4-ae7a6f5ecb0f"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

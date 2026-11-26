@@ -154,6 +154,9 @@ class CodingAgent:
         workdir: Path,
         cancel_event: asyncio.Event,
         updater: TaskUpdater,
+        *,
+        session_id: str,
+        resume: bool,
     ) -> Path:
         """完成代码任务；无变更时直接返回结果，有变更时创建本地提交。"""
         _validate_repository(repository)
@@ -181,10 +184,12 @@ class CodingAgent:
             )
 
         result, markdown_paths = await run_claude(
-            workdir, instruction, cancel_event, on_message=forward_message
+            workdir, instruction, cancel_event,
+            session_id=session_id, resume=resume, on_message=forward_message,
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
+        await updater.add_artifact(parts=[Part(data={"sessionId": result.session_id})])
 
         markdown_contents: list[tuple[Path, str]] = []
         for path in markdown_paths:
@@ -195,7 +200,7 @@ class CodingAgent:
         status = await asyncio.to_thread(_git, workdir, "status", "--porcelain")
         # 以 porcelain 格式判断工作区是否有变更，避免解析面向人的 Git 输出。
         if not status:
-            summary = result or "Claude 未生成代码变更；仓库保持不变。"
+            summary = result.result or "Claude 未生成代码变更；仓库保持不变。"
             for path, content in markdown_contents:
                 await _add_markdown_artifact(updater, path, content)
             await updater.update_status(
@@ -231,7 +236,7 @@ class CodingAgent:
         )
         commit_sha = await asyncio.to_thread(_git, workdir, "rev-parse", "HEAD")
         changed_files = staged.splitlines()
-        summary = result or "代码修改已完成并提交。"
+        summary = result.result or "代码修改已完成并提交。"
         for path, content in markdown_contents:
             await _add_markdown_artifact(updater, path, content)
         status_message = (

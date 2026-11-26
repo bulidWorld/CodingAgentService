@@ -14,6 +14,39 @@ from coding_agent_service.prompts import build_chat_prompt, build_coding_prompt
 logger = logging.getLogger(__name__)
 
 
+def _mcp_servers() -> dict[str, dict[str, Any]]:
+    """Build remote MCP configuration from runtime environment secrets."""
+    servers = {
+        "operator-agent-service": (
+            "http://operator-agent-service.monitoring.svc.cluster.local/api/v1/mcp",
+            "OPERATOR_AGENT_SERVICE_MCP_TOKEN",
+        ),
+        "pod-debug-service": (
+            "http://pod-debug-service.pod-debug.svc.cluster.local:8000/api/v1/mcp",
+            "POD_DEBUG_SERVICE_MCP_TOKEN",
+        ),
+        "ci-build-service": (
+            "http://192.168.100.133:10025/api/v1/mcp",
+            "CI_BUILD_SERVICE_MCP_TOKEN",
+        ),
+    }
+    configs: dict[str, dict[str, Any]] = {}
+    for name, (url, token_variable) in servers.items():
+        token = os.getenv(token_variable)
+        if token:
+            configs[name] = {
+                "type": "http",
+                "url": url,
+                "headers": {"Authorization": f"Bearer {token}"},
+            }
+        else:
+            logger.warning(
+                "MCP server token is not configured",
+                extra={"log_type": "business", "server": name, "token_variable": token_variable},
+            )
+    return configs
+
+
 def _log_cli_stderr(line: str) -> None:
     """将 CLI 诊断纳入服务日志。"""
     if line.startswith("[claude-code:unrecognized_model] "):
@@ -28,10 +61,12 @@ async def run_claude(
     instruction: str,
     cancel_event: asyncio.Event,
     *,
+    session_id: str,
+    resume: bool,
     chat: bool = False,
     on_message: Callable[[Any], Any] | None = None,
-) -> tuple[str, list[Path]]:
-    """执行提示词并返回最终文本及执行期间写入的 Markdown 文件路径。"""
+) -> tuple[ResultMessage, list[Path]]:
+    """执行提示词并返回 SDK 结果及执行期间写入的 Markdown 文件路径。"""
     markdown_files: set[Path] = set()
 
     async def capture_markdown_file(
@@ -56,10 +91,13 @@ async def run_claude(
 
     options = ClaudeAgentOptions(
         cwd=str(working_path),
+        mcp_servers=_mcp_servers(),
         stderr=_log_cli_stderr,
         allowed_tools=[] if chat else ["Read", "Edit", "Write", "Glob", "Grep", "Bash"],
         permission_mode="acceptEdits",
         setting_sources=[],
+        resume=session_id if resume else None,
+        extra_args={} if resume else {"session-id": session_id},
         max_turns=int(os.getenv("CLAUDE_MAX_TURNS", "30")),
         hooks=None if chat else {
             "PostToolUse": [HookMatcher(hooks=[capture_markdown_file])],
@@ -67,7 +105,7 @@ async def run_claude(
     )
     # 聊天模式不开放工具；代码模式明确要求聚焦任务且不自行创建提交。
     prompt = build_chat_prompt(instruction) if chat else build_coding_prompt(instruction)
-    result_text = ""
+    result = None
     async for message in query(prompt=prompt, options=options):
         if cancel_event.is_set():
             raise asyncio.CancelledError
@@ -75,6 +113,13 @@ async def run_claude(
             callback_result = on_message(message)
             if asyncio.iscoroutine(callback_result):
                 await callback_result
-        if isinstance(message, ResultMessage) and message.result:
-            result_text = message.result
-    return result_text, sorted(markdown_files)
+        if isinstance(message, ResultMessage):
+            result = message
+    if result is None:
+        raise RuntimeError("Claude did not return a session result")
+    if result.is_error:
+        details = result.result or "; ".join(getattr(result, "errors", None) or [])
+        raise RuntimeError(details or f"Claude task failed ({result.subtype})")
+    if result.session_id != session_id:
+        raise RuntimeError("Claude returned an unexpected session ID")
+    return result, sorted(markdown_files)

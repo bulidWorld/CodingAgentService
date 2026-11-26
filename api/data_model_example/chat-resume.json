@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": "chat-002",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "messageId": "message-chat-002",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "data": {
+            "type": "chat",
+            "sessionId": "bdb3899d-57ab-40ea-87b4-ae7a6f5ecb0f",
+            "message": "接着介绍一下你刚提到的滚动更新。"
+          }
+        }
+      ]
+    }
+  }
+}

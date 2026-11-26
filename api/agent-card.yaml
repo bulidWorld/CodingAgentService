@@ -1,13 +1,15 @@
 name: Coding and Chat Agent
 description: >-
   Supports repository bug fixing with local commits and general chat without
-  requiring a Git repository.
+  requiring a Git repository. Pass sessionId in the request data to resume
+  a Claude conversation. The task returns sessionId in an artifact data part.
 version: 0.1.0
 default_input_modes:
   - text/plain
   - application/json
 default_output_modes:
   - text/plain
+  - application/json
 capabilities:
   streaming: true
   extended_agent_card: true

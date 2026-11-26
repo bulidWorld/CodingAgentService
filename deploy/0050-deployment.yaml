@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: coding-agent-service
-          image: coding-agent-service:latest
+          image: lingxi.image.io/kunpeng/agent/coding-agent/coding-agent-service:v0.002
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "uvicorn"]
           args:
@@ -39,10 +39,7 @@ spec:
               protocol: TCP
           volumeMounts:
             - name: claude-home
-              mountPath: /var/service/coding-agent-service/share/.claude
-              readOnly: true
-            - name: claude-home
-              mountPath: /var/service/coding-agent-service/share/projects
+              mountPath: /var/service/coding-agent-service
       volumes:
         - name: claude-home
           persistentVolumeClaim:

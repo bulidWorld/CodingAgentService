@@ -9,6 +9,7 @@
       "parts": [
         {
           "data": {
+            "sessionId": null,
             "type": "chat",
             "message": "用简洁的中文解释什么是 Kubernetes Deployment。"
           }

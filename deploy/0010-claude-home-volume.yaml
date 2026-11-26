@@ -11,7 +11,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: pg-local
   local:
-    path: /var/service/coding-agent-service/share/.claude
+    path: /var/service/coding-agent-service
   nodeAffinity:
     required:
       nodeSelectorTerms:

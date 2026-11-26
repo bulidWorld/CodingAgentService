@@ -20,6 +20,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     SERVICE_NAME="coding-agent-service" \
+    CLAUDE_CONFIG_DIR="/var/service/coding-agent-service/share/.claude" \
     PROJECTS_ROOT="/var/service/coding-agent-service/share/projects" \
     WORKSPACE_ROOT="/var/service/coding-agent-service/share/work"
 

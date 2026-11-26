@@ -19,6 +19,16 @@
       },
       "artifacts": [
         {
+          "artifactId": "artifact-coding-session-001",
+          "parts": [
+            {
+              "data": {
+                "sessionId": "0b00de62-b879-4f3e-a742-40e52cb0ed20"
+              }
+            }
+          ]
+        },
+        {
           "artifactId": "artifact-coding-file-001",
           "name": "fix-summary.md",
           "description": "空配置现在会被解析为空对象，不再触发空指针异常。",

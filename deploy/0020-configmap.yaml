@@ -4,13 +4,11 @@ metadata:
   name: coding-agent-service-config
   namespace: coding-agent
 data:
-  CLAUDE_CONFIG_DIR: /var/service/coding-agent-service/share/.claude
   SERVICE_NAME: coding-agent-service
-  PROJECTS_ROOT: /var/service/coding-agent-service/share/projects
   PORT: "8000"
   # Set this when using an Anthropic-compatible gateway; omit it for Anthropic's default endpoint.
   ANTHROPIC_BASE_URL: http://192.168.100.133:8788
-  PUBLIC_BASE_URL: https://coding-agent.example.com
+  PUBLIC_BASE_URL: https://192.168.100.133
   CLAUDE_MAX_TURNS: "30"
   ANTHROPIC_MODEL: gpt-6-luna
   ANTHROPIC_DEFAULT_OPUS_MODEL: gpt-6-luna

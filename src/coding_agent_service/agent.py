@@ -11,6 +11,7 @@ import shutil
 import uuid
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from weakref import WeakValueDictionary
 
 from a2a.helpers import (
     get_data_parts,
@@ -31,7 +32,7 @@ from coding_agent_service.errors import TaskInputError
 logger = logging.getLogger(__name__)
 
 
-def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, str]:
+def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, str, str | None]:
     """从 A2A 消息的文本和 data part 中提取并校验任务参数。"""
     message = context.message
     if message is None:
@@ -56,6 +57,17 @@ def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, 
     if not isinstance(task_type, str) or task_type not in {"chat", "coding"}:
         raise TaskInputError("type must be either 'chat' or 'coding'")
 
+    session_id = payload.get("sessionId")
+    if session_id is not None:
+        if not isinstance(session_id, str):
+            raise TaskInputError("sessionId must be a UUID string or null")
+        session_id = session_id.strip() or None
+        if session_id is not None:
+            try:
+                session_id = str(uuid.UUID(session_id))
+            except ValueError as exc:
+                raise TaskInputError("sessionId must be a UUID string or null") from exc
+
     repository = payload.get("repository") or payload.get("repo_url")
     branch = payload.get("branch")
     instruction = (
@@ -68,27 +80,25 @@ def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, 
     if not isinstance(instruction, str) or not instruction.strip():
         raise TaskInputError("Provide a non-empty message/instruction")
     if task_type == "chat":
-        return task_type, None, None, instruction.strip()
+        return task_type, None, None, instruction.strip(), session_id
     if not isinstance(repository, str) or not repository.strip():
         raise TaskInputError("type='coding' requires repository (Git clone URL)")
     if not isinstance(branch, str) or not branch.strip():
         raise TaskInputError("type='coding' requires branch")
-    return task_type, repository.strip(), branch.strip(), instruction.strip()
+    return task_type, repository.strip(), branch.strip(), instruction.strip(), session_id
 
 
 class AgentRouter(AgentExecutor):
     """根据任务类型分发聊天或代码任务，并统一处理并发、取消和清理。"""
 
     def __init__(self) -> None:
-        service_name = os.getenv("SERVICE_NAME", "coding-agent-service")
-        self.projects_root = Path(
-            os.getenv("PROJECTS_ROOT", f"/var/service/{service_name}/share/projects")
-        ).resolve()
+        self.projects_root = Path(os.environ["PROJECTS_ROOT"]).resolve()
         self.projects_root.mkdir(parents=True, exist_ok=True)
-        self.workspace = Path(os.getenv("WORKSPACE_ROOT", "./work")).resolve()
+        self.workspace = Path(os.environ["WORKSPACE_ROOT"]).resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self._semaphore = asyncio.Semaphore(max(1, int(os.getenv("MAX_CONCURRENT_TASKS", "2"))))
         self._cancel_events: dict[str, asyncio.Event] = {}
+        self._workspace_locks: WeakValueDictionary[Path, asyncio.Lock] = WeakValueDictionary()
         self.chat_agent = ChatAgent()
         self.coding_agent = CodingAgent()
 
@@ -106,12 +116,12 @@ class AgentRouter(AgentExecutor):
         cancel_event = asyncio.Event()
         # cancel() 通过任务 ID 设置事件；执行结束后必须移除，避免字典持续增长。
         self._cancel_events[task.id] = cancel_event
-        workdir: Path | None = None
-        task_type: str | None = None
         try:
-            task_type, repository, branch, instruction = _task_fields(context)
+            task_type, repository, branch, instruction, resume_session_id = _task_fields(context)
+            session_id = resume_session_id or str(uuid.uuid4())
             if task_type == "chat":
-                workdir = self.workspace / f"chat-{uuid.uuid4().hex}"
+                # Claude 按工作目录读取会话记录，续聊时使用相同路径。
+                workdir = self.workspace / f"chat-{session_id}"
             else:
                 assert repository is not None
                 parsed = urlparse(repository)
@@ -123,7 +133,10 @@ class AgentRouter(AgentExecutor):
                 repo_key = hashlib.sha256(repository.rstrip("/").removesuffix(".git").encode()).hexdigest()[:10]
                 workdir = self.projects_root / f"{repo_name}-{repo_key}"
 
-            async with self._semaphore:
+            lock = self._workspace_locks.get(workdir)
+            if lock is None:
+                lock = self._workspace_locks[workdir] = asyncio.Lock()
+            async with lock, self._semaphore:
                 logger.info(
                     "Starting agent task",
                     extra={"log_type": "business", "task_id": task.id, "task_type": task_type},
@@ -131,7 +144,13 @@ class AgentRouter(AgentExecutor):
                 if cancel_event.is_set():
                     raise asyncio.CancelledError
                 if task_type == "chat":
-                    await self.chat_agent.execute(instruction, workdir, cancel_event, updater)
+                    try:
+                        await self.chat_agent.execute(
+                            instruction, workdir, cancel_event, updater,
+                            session_id=session_id, resume=resume_session_id is not None,
+                        )
+                    finally:
+                        await asyncio.to_thread(shutil.rmtree, workdir, True)
                 else:
                     assert repository is not None and branch is not None
                     await self.coding_agent.execute(
@@ -141,6 +160,8 @@ class AgentRouter(AgentExecutor):
                         workdir,
                         cancel_event,
                         updater,
+                        session_id=session_id,
+                        resume=resume_session_id is not None,
                     )
         except asyncio.CancelledError:
             await updater.update_status(
@@ -156,10 +177,6 @@ class AgentRouter(AgentExecutor):
             )
         finally:
             self._cancel_events.pop(task.id, None)
-            # Coding workspaces are persistent projects. Chat workspaces remain ephemeral
-            # and are cleaned up after each request.
-            if workdir is not None and task_type == "chat" and workdir.exists():
-                await asyncio.to_thread(shutil.rmtree, workdir, True)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """通知正在运行的任务协作式取消。"""
