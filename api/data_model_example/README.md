@@ -29,7 +29,7 @@ Authorization: Bearer <A2A_API_TOKEN>
 - [`coding-repo-url-alias.json`](coding-repo-url-alias.json)：coding 使用 `repo_url` 和 `task` 字段别名。
 - [`coding-streaming.json`](coding-streaming.json)：通过 `SendStreamingMessage` 提交 coding 任务。
 
-服务接受 `instruction`、`task`、`prompt`、`message` 作为提示字段，按此顺序取第一个非空值；没有这些字段时使用 text part 的文本。`repository` 也可写成 `repo_url`。未提供 `type` 时服务默认为 `coding`；coding 必须提供仓库地址、`branch` 和 `tag`。
+服务接受 `instruction`、`task`、`prompt`、`message` 作为提示字段，按此顺序取第一个非空值；没有这些字段时使用 text part 的文本。`repository` 也可写成 `repo_url`。未提供 `type` 时服务默认为 `coding`；coding 必须提供仓库地址、`branch` 和 `tag`。检出版本由 `branch` 决定，取该分支远端最新提交；`tag` 仅作为任务信息记录。
 
 ## 延续 Claude 会话
 

@@ -108,7 +108,7 @@ def _git(cwd: Path | None, *args: str, timeout: int = 180) -> str:
 
 
 def _clone_repository(repository: str, branch: str, tag: str, destination: Path, *, task_id: str) -> None:
-    """检出指定分支和 tag，并按出站请求规范记录耗时和状态。"""
+    """检出远端指定分支的最新代码，并按出站请求规范记录耗时和状态。"""
     parsed = urlsplit(repository)
     remote_label = f"{parsed.hostname}{parsed.path}" if parsed.hostname else re.sub(r"^.*@", "", repository)
     started = time.monotonic()
@@ -125,26 +125,15 @@ def _clone_repository(repository: str, branch: str, tag: str, destination: Path,
         found_branch = _git(git_cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
         if not found_branch:
             raise TaskInputError(f"Branch '{branch}' was not found in the remote repository")
-        found_tag = _git(git_cwd, "ls-remote", "--tags", remote, f"refs/tags/{tag}")
-        if not found_tag:
-            raise TaskInputError(f"Tag '{tag}' was not found in the remote repository")
-
         if destination.exists():
             # Reused single-branch clones may have a narrow fetch refspec for a different branch.
             branch_ref = f"refs/remotes/origin/{branch}"
             _git(destination, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{branch_ref}")
             _git(destination, "checkout", "-B", branch, branch_ref)
             _git(destination, "reset", "--hard", branch_ref)
-            tag_ref = f"refs/tags/{tag}"
-            _git(destination, "fetch", "--no-tags", "origin", f"+{tag_ref}:{tag_ref}")
-            _git(destination, "checkout", "--detach", tag_ref)
-            _git(destination, "reset", "--hard", tag_ref)
         else:
             destination.parent.mkdir(parents=True, exist_ok=True)
             _git(None, "clone", "--no-tags", "--single-branch", "--branch", branch, repository, str(destination))
-            tag_ref = f"refs/tags/{tag}"
-            _git(destination, "fetch", "--no-tags", "origin", f"+{tag_ref}:{tag_ref}")
-            _git(destination, "checkout", "--detach", tag_ref)
         status = 200
     except Exception:
         logger.exception(
@@ -188,10 +177,9 @@ class CodingAgent:
         """完成代码任务；无变更时直接返回结果，有变更时创建本地提交。"""
         _validate_repository(repository)
         assert branch is not None and tag is not None
-        if branch.startswith("-") or tag.startswith("-"):
-            raise TaskInputError("Invalid branch or tag name")
+        if branch.startswith("-"):
+            raise TaskInputError("Invalid branch name")
         await asyncio.to_thread(_git, None, "check-ref-format", "--branch", branch)
-        await asyncio.to_thread(_git, None, "check-ref-format", "--branch", tag)
 
         await asyncio.to_thread(_clone_repository, repository, branch, tag, workdir, task_id=updater.task_id)
         logger.info(

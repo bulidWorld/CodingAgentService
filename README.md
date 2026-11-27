@@ -46,7 +46,7 @@ curl http://localhost:8000/ \
 
 ## 提交任务
 
-使用 A2A 1.0 `SendMessage` JSON-RPC 方法。消息 `data` part 中的 `type` 为 `coding` 或 `chat`。`coding` 必须提供 `repository`、`branch`、`tag` 和 `instruction`；服务先校验并检出分支，再检出 tag，任务工作区最终位于 tag 对应的提交。`chat` 可只提供 `message`，不需要仓库地址。两类任务示例见 [`curl.example`](curl.example)。
+使用 A2A 1.0 `SendMessage` JSON-RPC 方法。消息 `data` part 中的 `type` 为 `coding` 或 `chat`。`coding` 必须提供 `repository`、`branch`、`tag` 和 `instruction`；服务检出分支的远端最新代码，`tag` 仅作为任务信息记录，不影响检出的版本。`chat` 可只提供 `message`，不需要仓库地址。两类任务示例见 [`curl.example`](curl.example)。
 
 在同一个 data part 中传入可选的 `sessionId`。省略或传空值会新建 Claude 会话，传入响应 artifact 的 `data.sessionId` 会续聊。普通和流式响应的字段位置见[会话示例](api/data_model_example/README.md#延续-claude-会话)。
 

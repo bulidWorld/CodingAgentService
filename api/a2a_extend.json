@@ -36,12 +36,12 @@
             "branch": {
               "type": "string",
               "minLength": 1,
-              "description": "Git branch required for coding tasks; the service checks this branch before checking out tag."
+              "description": "Git branch required for coding tasks; the service checks out its latest remote commit."
             },
             "tag": {
               "type": "string",
               "minLength": 1,
-              "description": "Git tag required for coding tasks; the task workspace is checked out at this tag."
+              "description": "Tag value required as task metadata. It does not affect which code revision is checked out."
             },
             "instruction": {
               "type": "string",
