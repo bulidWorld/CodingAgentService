@@ -24,6 +24,12 @@ ENV PYTHONUNBUFFERED=1 \
     PROJECTS_ROOT="/var/service/coding-agent-service/share/projects" \
     WORKSPACE_ROOT="/var/service/coding-agent-service/share/work"
 
+# Use Tsinghua's Debian mirrors before installing system packages.
+RUN sed -i \
+    -e 's|http://deb.debian.org/debian|https://mirrors.tuna.tsinghua.edu.cn/debian|g' \
+    -e 's|http://security.debian.org/debian-security|https://mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
+    /etc/apt/sources.list.d/debian.sources
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl git nodejs npm \
     && npm install --global --registry=https://registry.npmmirror.com @anthropic-ai/claude-code \
