@@ -23,7 +23,7 @@ class JsonFormatter(logging.Formatter):
             "session_id", "provider", "model", "event", "message_type", "tool_name", "tool_use_id",
             "server", "turn", "is_error", "num_turns", "cost_usd", "usage", "mode", "resume",
             "max_turns", "message_count", "tool_call_count", "subtype", "status_detail", "detail",
-            "workspace", "branch", "phase", "git_command",
+            "workspace", "branch", "tag", "ref", "is_tag", "phase", "git_command",
             "mcp_server_count",
         ):
             value = getattr(record, key, None)

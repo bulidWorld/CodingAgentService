@@ -12,6 +12,7 @@
             "type": "coding",
             "repo_url": "https://github.com/example/project.git",
             "branch": "main",
+            "tag": "v1.0.0",
             "task": "修复解析空配置时的空指针异常，并补充回归测试。"
           }
         }

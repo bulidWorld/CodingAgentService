@@ -25,11 +25,11 @@ Authorization: Bearer <A2A_API_TOKEN>
 - [`chat-data-part.json`](chat-data-part.json)：chat，通过 `data.message` 传入问题，不需要仓库。
 - [`chat-text-part.json`](chat-text-part.json)：任务类型放在 DataPart，问题放在另一个 text part。
 - [`chat-json-text-part.json`](chat-json-text-part.json)：把 JSON 对象编码为 text part。
-- [`coding-data-part.json`](coding-data-part.json)：coding，通过 `repository`、`branch` 和 `instruction` 提交任务。
+- [`coding-data-part.json`](coding-data-part.json)：coding，通过 `repository`、`branch`、`tag` 和 `instruction` 提交任务。
 - [`coding-repo-url-alias.json`](coding-repo-url-alias.json)：coding 使用 `repo_url` 和 `task` 字段别名。
 - [`coding-streaming.json`](coding-streaming.json)：通过 `SendStreamingMessage` 提交 coding 任务。
 
-服务接受 `instruction`、`task`、`prompt`、`message` 作为提示字段，按此顺序取第一个非空值；没有这些字段时使用 text part 的文本。`repository` 也可写成 `repo_url`。未提供 `type` 时服务默认为 `coding`；coding 必须提供仓库地址和 `branch`。
+服务接受 `instruction`、`task`、`prompt`、`message` 作为提示字段，按此顺序取第一个非空值；没有这些字段时使用 text part 的文本。`repository` 也可写成 `repo_url`。未提供 `type` 时服务默认为 `coding`；coding 必须提供仓库地址、`branch` 和 `tag`。
 
 ## 延续 Claude 会话
 

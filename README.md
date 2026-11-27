@@ -42,11 +42,11 @@ curl http://localhost:8000/ \
 
 公开卡片声明支持 `extendedAgentCard`；扩展卡片额外描述了使用服务端 Git 凭据访问私有仓库的能力。能力描述来自 YAML 配置，并由 A2A SDK 提供的请求处理器通过 RPC 返回。
 
-启动前设置 `PROJECTS_ROOT` 和 `WORKSPACE_ROOT`。Coding 仓库保存在 `PROJECTS_ROOT` 下，首次任务会克隆，后续任务会复用仓库并更新指定分支。`WORKSPACE_ROOT` 用于服务工作目录。需要指定 Claude 配置目录时，设置 `CLAUDE_CONFIG_DIR`，Claude Code 会从环境中读取。Docker 镜像已设置这三个目录。其他常用配置包括 `PUBLIC_BASE_URL`、`MAX_CONCURRENT_TASKS`、`CLAUDE_MODEL`、`CLAUDE_MAX_TURNS`、`GIT_AUTHOR_NAME`、`GIT_AUTHOR_EMAIL` 和 `ALLOWED_GIT_HOSTS`。
+启动前设置 `PROJECTS_ROOT` 和 `WORKSPACE_ROOT`。Coding 仓库保存在 `PROJECTS_ROOT` 下，首次任务会克隆，后续任务会复用仓库并更新指定分支或 tag。`WORKSPACE_ROOT` 用于服务工作目录。需要指定 Claude 配置目录时，设置 `CLAUDE_CONFIG_DIR`，Claude Code 会从环境中读取。Docker 镜像已设置这三个目录。其他常用配置包括 `PUBLIC_BASE_URL`、`MAX_CONCURRENT_TASKS`、`CLAUDE_MODEL`、`CLAUDE_MAX_TURNS`、`GIT_AUTHOR_NAME`、`GIT_AUTHOR_EMAIL` 和 `ALLOWED_GIT_HOSTS`。
 
 ## 提交任务
 
-使用 A2A 1.0 `SendMessage` JSON-RPC 方法。消息 `data` part 中的 `type` 为 `coding` 或 `chat`。`coding` 必须提供 `repository`、`branch` 和 `instruction`；`chat` 可只提供 `message`，不需要仓库地址。两类任务示例见 [`curl.example`](curl.example)。
+使用 A2A 1.0 `SendMessage` JSON-RPC 方法。消息 `data` part 中的 `type` 为 `coding` 或 `chat`。`coding` 必须提供 `repository`、`branch`、`tag` 和 `instruction`；服务先校验并检出分支，再检出 tag，任务工作区最终位于 tag 对应的提交。`chat` 可只提供 `message`，不需要仓库地址。两类任务示例见 [`curl.example`](curl.example)。
 
 在同一个 data part 中传入可选的 `sessionId`。省略或传空值会新建 Claude 会话，传入响应 artifact 的 `data.sessionId` 会续聊。普通和流式响应的字段位置见[会话示例](api/data_model_example/README.md#延续-claude-会话)。
 
@@ -64,7 +64,7 @@ curl http://localhost:8000/ \
         "messageId":"bug-001",
         "role":"ROLE_USER",
         "parts":[
-          {"data":{"type":"coding","repository":"https://github.com/example/project.git","branch":"main","instruction":"修复解析空配置时的空指针异常，并补充回归测试。"}}
+          {"data":{"type":"coding","repository":"https://github.com/example/project.git","branch":"main","tag":"v1.0.0","instruction":"修复解析空配置时的空指针异常，并补充回归测试。"}}
         ]
       }
     }

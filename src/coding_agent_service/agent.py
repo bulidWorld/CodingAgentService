@@ -32,7 +32,7 @@ from coding_agent_service.errors import TaskInputError
 logger = logging.getLogger(__name__)
 
 
-def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, str, str | None]:
+def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, str | None, str, str | None]:
     """从 A2A 消息的文本和 data part 中提取并校验任务参数。"""
     message = context.message
     if message is None:
@@ -70,6 +70,7 @@ def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, 
 
     repository = payload.get("repository") or payload.get("repo_url")
     branch = payload.get("branch")
+    tag = payload.get("tag")
     instruction = (
         payload.get("instruction")
         or payload.get("task")
@@ -80,12 +81,14 @@ def _task_fields(context: RequestContext) -> tuple[str, str | None, str | None, 
     if not isinstance(instruction, str) or not instruction.strip():
         raise TaskInputError("Provide a non-empty message/instruction")
     if task_type == "chat":
-        return task_type, None, None, instruction.strip(), session_id
+        return task_type, None, None, None, instruction.strip(), session_id
     if not isinstance(repository, str) or not repository.strip():
         raise TaskInputError("type='coding' requires repository (Git clone URL)")
     if not isinstance(branch, str) or not branch.strip():
         raise TaskInputError("type='coding' requires branch")
-    return task_type, repository.strip(), branch.strip(), instruction.strip(), session_id
+    if not isinstance(tag, str) or not tag.strip():
+        raise TaskInputError("type='coding' requires tag")
+    return task_type, repository.strip(), branch.strip(), tag.strip(), instruction.strip(), session_id
 
 
 class AgentRouter(AgentExecutor):
@@ -117,7 +120,7 @@ class AgentRouter(AgentExecutor):
         # cancel() 通过任务 ID 设置事件；执行结束后必须移除，避免字典持续增长。
         self._cancel_events[task.id] = cancel_event
         try:
-            task_type, repository, branch, instruction, resume_session_id = _task_fields(context)
+            task_type, repository, branch, tag, instruction, resume_session_id = _task_fields(context)
             session_id = resume_session_id or str(uuid.uuid4())
             if task_type == "chat":
                 # Claude 按工作目录读取会话记录，续聊时使用相同路径。
@@ -141,7 +144,7 @@ class AgentRouter(AgentExecutor):
                     "Starting agent task",
                     extra={"log_type": "business", "event": "task_started", "task_id": task.id,
                            "task_type": task_type, "session_id": session_id,
-                           "branch": branch, "workspace": str(workdir)},
+                           "branch": branch, "tag": tag, "workspace": str(workdir)},
                 )
                 if cancel_event.is_set():
                     raise asyncio.CancelledError
@@ -154,10 +157,11 @@ class AgentRouter(AgentExecutor):
                     finally:
                         await asyncio.to_thread(shutil.rmtree, workdir, True)
                 else:
-                    assert repository is not None and branch is not None
+                    assert repository is not None and (branch is not None or tag is not None)
                     await self.coding_agent.execute(
                         repository,
                         branch,
+                        tag,
                         instruction,
                         workdir,
                         cancel_event,

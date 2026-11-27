@@ -13,6 +13,7 @@
             "sessionId": "0b00de62-b879-4f3e-a742-40e52cb0ed20",
             "repository": "https://github.com/example/project.git",
             "branch": "main",
+            "tag": "v1.0.0",
             "instruction": "结合上一轮空配置修复，检查只含空白字符的配置输入是否也需要处理。"
           }
         }

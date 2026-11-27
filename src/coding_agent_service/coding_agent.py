@@ -107,8 +107,8 @@ def _git(cwd: Path | None, *args: str, timeout: int = 180) -> str:
     return result.stdout.strip()
 
 
-def _clone_repository(repository: str, branch: str, destination: Path, *, task_id: str) -> None:
-    """克隆指定分支，并按出站请求规范记录耗时和状态。"""
+def _clone_repository(repository: str, branch: str, tag: str, destination: Path, *, task_id: str) -> None:
+    """检出指定分支和 tag，并按出站请求规范记录耗时和状态。"""
     parsed = urlsplit(repository)
     remote_label = f"{parsed.hostname}{parsed.path}" if parsed.hostname else re.sub(r"^.*@", "", repository)
     started = time.monotonic()
@@ -117,24 +117,40 @@ def _clone_repository(repository: str, branch: str, destination: Path, *, task_i
         if destination.exists():
             if not (destination / ".git").exists():
                 raise RuntimeError(f"Repository directory already exists and is not a Git repository: {destination}")
-            remote = _git(destination, "remote", "get-url", "origin")
-            if remote.rstrip("/").removesuffix(".git") != repository.rstrip("/").removesuffix(".git"):
+            existing_remote = _git(destination, "remote", "get-url", "origin")
+            if existing_remote.rstrip("/").removesuffix(".git") != repository.rstrip("/").removesuffix(".git"):
                 raise RuntimeError(f"Repository directory belongs to a different remote: {destination}")
-            # Reused single-branch clones may have a narrow fetch refspec for a different
-            # branch. Fetch the requested branch into an explicit remote-tracking ref.
-            remote_ref = f"refs/remotes/origin/{branch}"
-            _git(destination, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{remote_ref}")
-            _git(destination, "checkout", "-B", branch, remote_ref)
-            _git(destination, "reset", "--hard", remote_ref)
+        remote = "origin" if destination.exists() else repository
+        git_cwd = destination if destination.exists() else None
+        found_branch = _git(git_cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
+        if not found_branch:
+            raise TaskInputError(f"Branch '{branch}' was not found in the remote repository")
+        found_tag = _git(git_cwd, "ls-remote", "--tags", remote, f"refs/tags/{tag}")
+        if not found_tag:
+            raise TaskInputError(f"Tag '{tag}' was not found in the remote repository")
+
+        if destination.exists():
+            # Reused single-branch clones may have a narrow fetch refspec for a different branch.
+            branch_ref = f"refs/remotes/origin/{branch}"
+            _git(destination, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{branch_ref}")
+            _git(destination, "checkout", "-B", branch, branch_ref)
+            _git(destination, "reset", "--hard", branch_ref)
+            tag_ref = f"refs/tags/{tag}"
+            _git(destination, "fetch", "--no-tags", "origin", f"+{tag_ref}:{tag_ref}")
+            _git(destination, "checkout", "--detach", tag_ref)
+            _git(destination, "reset", "--hard", tag_ref)
         else:
             destination.parent.mkdir(parents=True, exist_ok=True)
             _git(None, "clone", "--no-tags", "--single-branch", "--branch", branch, repository, str(destination))
+            tag_ref = f"refs/tags/{tag}"
+            _git(destination, "fetch", "--no-tags", "origin", f"+{tag_ref}:{tag_ref}")
+            _git(destination, "checkout", "--detach", tag_ref)
         status = 200
     except Exception:
         logger.exception(
             "Git repository clone failed",
             extra={"log_type": "exception", "path": remote_label, "task_id": task_id,
-                   "branch": branch, "workspace": str(destination)},
+                   "branch": branch, "tag": tag, "workspace": str(destination)},
         )
         raise
     finally:
@@ -148,6 +164,7 @@ def _clone_repository(repository: str, branch: str, destination: Path, *, task_i
                 "duration_ms": round((time.monotonic() - started) * 1000, 2),
                 "task_id": task_id,
                 "branch": branch,
+                "tag": tag,
             },
         )
 
@@ -158,7 +175,8 @@ class CodingAgent:
     async def execute(
         self,
         repository: str,
-        branch: str,
+        branch: str | None,
+        tag: str | None,
         instruction: str,
         workdir: Path,
         cancel_event: asyncio.Event,
@@ -169,14 +187,16 @@ class CodingAgent:
     ) -> Path:
         """完成代码任务；无变更时直接返回结果，有变更时创建本地提交。"""
         _validate_repository(repository)
-        if branch.startswith("-"):
-            raise TaskInputError("Invalid branch name")
+        assert branch is not None and tag is not None
+        if branch.startswith("-") or tag.startswith("-"):
+            raise TaskInputError("Invalid branch or tag name")
         await asyncio.to_thread(_git, None, "check-ref-format", "--branch", branch)
+        await asyncio.to_thread(_git, None, "check-ref-format", "--branch", tag)
 
-        await asyncio.to_thread(_clone_repository, repository, branch, workdir, task_id=updater.task_id)
+        await asyncio.to_thread(_clone_repository, repository, branch, tag, workdir, task_id=updater.task_id)
         logger.info(
             "Coding workspace ready",
-            extra={"log_type": "business", "workspace": str(workdir), "branch": branch},
+            extra={"log_type": "business", "workspace": str(workdir), "branch": branch, "tag": tag},
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
@@ -187,7 +207,7 @@ class CodingAgent:
         logger.info(
             "Claude task status updated; starting model request",
             extra={"log_type": "business", "event": "task_phase", "phase": "claude_request",
-                   "workspace": str(workdir), "branch": branch, "session_id": session_id},
+                   "workspace": str(workdir), "branch": branch, "tag": tag, "session_id": session_id},
         )
         async def forward_message(message: object) -> None:
             if isinstance(message, ResultMessage):
@@ -259,7 +279,7 @@ class CodingAgent:
         for path, content in markdown_contents:
             await _add_markdown_artifact(updater, path, content)
         status_message = (
-            f"{summary}\n\n分支：{branch}\nCommit：{commit_sha}\n修改文件：\n"
+            f"{summary}\n\n分支：{branch}\nTag：{tag}\nCommit：{commit_sha}\n修改文件：\n"
             + "\n".join(f"- {name}" for name in changed_files)
         )
         await updater.update_status(

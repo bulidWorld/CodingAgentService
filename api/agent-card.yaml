@@ -32,7 +32,7 @@ skills:
   - id: fix_repository_bug
     name: Fix a repository bug
     description: >-
-      Check out a Git repository branch, fix a reported bug with Claude,
+      Validate a Git repository branch, check out the requested tag, and fix a reported bug with Claude,
       and commit the code changes.
     tags: [coding, bug-fix, git, claude]
     examples:
