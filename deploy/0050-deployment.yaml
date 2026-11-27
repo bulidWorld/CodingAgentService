@@ -38,9 +38,9 @@ spec:
               containerPort: 8000
               protocol: TCP
           volumeMounts:
-            - name: claude-home
+            - name: service-data
               mountPath: /var/service/coding-agent-service
       volumes:
-        - name: claude-home
+        - name: service-data
           persistentVolumeClaim:
             claimName: coding-agent-service-pvc

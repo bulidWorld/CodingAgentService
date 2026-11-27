@@ -15,10 +15,9 @@ from urllib.parse import unquote, urlparse, urlsplit
 
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Artifact, Part, TaskArtifactUpdateEvent, TaskState
-from a2a.helpers import new_text_message, new_text_part
-from claude_agent_sdk import ResultMessage
+from a2a.helpers import new_data_part, new_text_message, new_text_part
 
-from coding_agent_service.claude_client import run_claude
+from coding_agent_service.codex_client import run_codex
 from coding_agent_service.errors import TaskInputError
 
 logger = logging.getLogger(__name__)
@@ -190,33 +189,31 @@ class CodingAgent:
             raise asyncio.CancelledError
         await updater.update_status(
             state=TaskState.TASK_STATE_WORKING,
-            message=new_text_message("Claude 正在分析并修改代码"),
+            message=new_text_message("Codex 正在分析并修改代码"),
         )
         logger.info(
-            "Claude task status updated; starting model request",
-            extra={"log_type": "business", "event": "task_phase", "phase": "claude_request",
+            "Codex task status updated; starting model request",
+            extra={"log_type": "business", "event": "task_phase", "phase": "codex_request",
                    "workspace": str(workdir), "branch": branch, "tag": tag, "session_id": session_id},
         )
-        async def forward_message(message: object) -> None:
-            if isinstance(message, ResultMessage):
-                return
+        async def forward_message(message: str) -> None:
             await updater.update_status(
                 state=TaskState.TASK_STATE_WORKING,
-                message=new_text_message(str(message)),
+                message=new_text_message(message),
             )
 
-        result, markdown_paths = await run_claude(
+        result, markdown_paths = await run_codex(
             workdir, instruction, cancel_event,
-            session_id=session_id, resume=resume, on_message=forward_message,
+            session_id=session_id, resume=resume, branch=branch, on_message=forward_message,
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
         logger.info(
-            "Claude model request returned",
-            extra={"log_type": "business", "event": "task_phase", "phase": "post_claude",
+            "Codex model request returned",
+            extra={"log_type": "business", "event": "task_phase", "phase": "post_codex",
                    "workspace": str(workdir), "session_id": session_id},
         )
-        await updater.add_artifact(parts=[Part(data={"sessionId": result.session_id})])
+        await updater.add_artifact(parts=[new_data_part({"sessionId": result.session_id})])
 
         markdown_contents: list[tuple[Path, str]] = []
         for path in markdown_paths:
@@ -227,7 +224,7 @@ class CodingAgent:
         status = await asyncio.to_thread(_git, workdir, "status", "--porcelain")
         # 以 porcelain 格式判断工作区是否有变更，避免解析面向人的 Git 输出。
         if not status:
-            summary = result.result or "Claude 未生成代码变更；仓库保持不变。"
+            summary = result.text or "Codex 未生成代码变更；仓库保持不变。"
             for path, content in markdown_contents:
                 await _add_markdown_artifact(updater, path, content)
             await updater.update_status(
@@ -263,7 +260,7 @@ class CodingAgent:
         )
         commit_sha = await asyncio.to_thread(_git, workdir, "rev-parse", "HEAD")
         changed_files = staged.splitlines()
-        summary = result.result or "代码修改已完成并提交。"
+        summary = result.text or "代码修改已完成并提交。"
         for path, content in markdown_contents:
             await _add_markdown_artifact(updater, path, content)
         status_message = (

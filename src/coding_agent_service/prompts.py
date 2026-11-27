@@ -1,4 +1,4 @@
-"""Claude 任务提示词。"""
+"""Codex 任务提示词。"""
 
 from __future__ import annotations
 

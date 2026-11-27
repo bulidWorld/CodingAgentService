@@ -1,1 +1,1 @@
-"""A2A Claude coding agent service."""
+"""A2A Codex coding agent service."""

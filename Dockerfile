@@ -2,7 +2,6 @@ FROM python:3.11-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
     PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 WORKDIR /app
@@ -20,7 +19,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     SERVICE_NAME="coding-agent-service" \
-    CLAUDE_CONFIG_DIR="/var/service/coding-agent-service/share/.claude" \
+    CODEX_HOME="/var/service/coding-agent-service/share/.codex" \
     PROJECTS_ROOT="/var/service/coding-agent-service/share/projects" \
     WORKSPACE_ROOT="/var/service/coding-agent-service/share/work"
 
@@ -31,9 +30,7 @@ RUN sed -i \
     /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git nodejs npm \
-    && npm install --global --registry=https://registry.npmmirror.com @anthropic-ai/claude-code \
-    && apt-get purge -y --auto-remove npm \
+    && apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

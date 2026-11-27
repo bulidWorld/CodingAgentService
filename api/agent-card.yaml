@@ -2,7 +2,7 @@ name: Coding and Chat Agent
 description: >-
   Supports repository bug fixing with local commits and general chat without
   requiring a Git repository. Pass sessionId in the request data to resume
-  a Claude conversation. The task returns sessionId in an artifact data part.
+  a Codex conversation. The task returns sessionId in an artifact data part.
 version: 0.1.0
 default_input_modes:
   - text/plain
@@ -32,9 +32,9 @@ skills:
   - id: fix_repository_bug
     name: Fix a repository bug
     description: >-
-      Validate a Git repository branch, check out the requested tag, and fix a reported bug with Claude,
+      Validate a Git repository branch, check out the requested tag, and fix a reported bug with Codex,
       and commit the code changes.
-    tags: [coding, bug-fix, git, claude]
+    tags: [coding, bug-fix, git, codex]
     examples:
       - Fix the null pointer error when parsing an empty configuration file.
     input_modes: [text/plain, application/json]

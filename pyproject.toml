@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coding-agent-service"
 version = "0.1.0"
-description = "A2A service that fixes repository bugs with Claude Agent SDK"
+description = "A2A service that fixes repository bugs with Codex SDK"
 requires-python = ">=3.11"
 dependencies = [
     "a2a-sdk[http-server]>=1.0,<2.0",
-    "claude-agent-sdk>=0.1.0",
+    "openai-codex==0.172.0",
     "python-dotenv>=1.0",
     "PyYAML>=6.0",
     "uvicorn[standard]>=0.30",

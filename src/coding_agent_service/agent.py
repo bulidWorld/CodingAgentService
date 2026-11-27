@@ -123,7 +123,7 @@ class AgentRouter(AgentExecutor):
             task_type, repository, branch, tag, instruction, resume_session_id = _task_fields(context)
             session_id = resume_session_id or str(uuid.uuid4())
             if task_type == "chat":
-                # Claude 按工作目录读取会话记录，续聊时使用相同路径。
+                # 同一聊天会话使用相同的工作目录路径。
                 workdir = self.workspace / f"chat-{session_id}"
             else:
                 assert repository is not None

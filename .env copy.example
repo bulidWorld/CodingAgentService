@@ -1,15 +1,18 @@
 # Required. Bearer token expected on A2A JSON-RPC requests.
 A2A_API_TOKEN=change-me-to-a-long-random-value
 
-# Required for Claude API authentication, unless Claude Code credentials are mounted.
-ANTHROPIC_API_KEY=
-# Optional. Omit to let Claude Agent SDK use its configured default.
-CLAUDE_MODEL=
+# Codex gateway. Set the client key to use the configured Responses endpoint.
+CODEX_GATEWAY_BASE_URL=http://192.168.100.133:8787/v1
+CODEX_GATEWAY_API_KEY=
+CODEX_MODEL=gpt-6.2-sol
+CODEX_REASONING_EFFORT=low
+CODEX_SERVICE_TIER=default
 
 # Public base URL advertised in the A2A Agent Card.
 PUBLIC_BASE_URL=http://127.0.0.1:8000
 WORKSPACE_ROOT=./work
-PROJECTS_ROOT=./projects
+CODEX_HOME=./work/.codex
+PROJECTS_ROOT=./work/projects
 MAX_CONCURRENT_TASKS=2
 GIT_AUTHOR_NAME=Coding Agent
 GIT_AUTHOR_EMAIL=coding-agent@example.invalid

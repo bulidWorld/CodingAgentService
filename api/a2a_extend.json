@@ -21,7 +21,7 @@
             },
             "sessionId": {
               "type": ["string", "null"],
-              "description": "Claude session UUID returned in an artifact's data.sessionId. Omit it, pass null, or pass a blank string to start a new session."
+              "description": "Service session UUID returned in an artifact's data.sessionId. Omit it, pass null, or pass a blank string to start a new session."
             },
             "repository": {
               "type": "string",
