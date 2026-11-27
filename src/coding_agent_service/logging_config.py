@@ -18,7 +18,14 @@ class JsonFormatter(logging.Formatter):
             "log_type": getattr(record, "log_type", "business"),
             "message": record.getMessage(),
         }
-        for key in ("trace_id", "method", "path", "status", "duration_ms", "task_id", "exceptionInfo"):
+        for key in (
+            "trace_id", "method", "path", "status", "duration_ms", "task_id", "exceptionInfo",
+            "session_id", "provider", "model", "event", "message_type", "tool_name", "tool_use_id",
+            "server", "turn", "is_error", "num_turns", "cost_usd", "usage", "mode", "resume",
+            "max_turns", "message_count", "tool_call_count", "subtype", "status_detail", "detail",
+            "workspace", "branch", "phase", "git_command",
+            "mcp_server_count",
+        ):
             value = getattr(record, key, None)
             if value is not None:
                 payload[key] = value

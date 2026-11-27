@@ -16,3 +16,6 @@ data:
   ANTHROPIC_DEFAULT_HAIKU_MODEL: gpt-6-luna
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
   CLAUDE_CODE_EFFORT_LEVEL: medium
+  OPERATOR_AGENT_SERVICE_MCP_URL: http://operator-agent-service.monitoring.svc.cluster.local/api/v1/mcp
+  POD_DEBUG_SERVICE_MCP_URL: http://pod-debug-service.pod-debug.svc.cluster.local:8000/api/v1/mcp
+  CI_BUILD_SERVICE_MCP_URL: http://192.168.100.133:10025/api/v1/mcp

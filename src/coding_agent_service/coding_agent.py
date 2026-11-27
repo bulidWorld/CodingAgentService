@@ -107,7 +107,7 @@ def _git(cwd: Path | None, *args: str, timeout: int = 180) -> str:
     return result.stdout.strip()
 
 
-def _clone_repository(repository: str, branch: str, destination: Path) -> None:
+def _clone_repository(repository: str, branch: str, destination: Path, *, task_id: str) -> None:
     """克隆指定分支，并按出站请求规范记录耗时和状态。"""
     parsed = urlsplit(repository)
     remote_label = f"{parsed.hostname}{parsed.path}" if parsed.hostname else re.sub(r"^.*@", "", repository)
@@ -120,15 +120,22 @@ def _clone_repository(repository: str, branch: str, destination: Path) -> None:
             remote = _git(destination, "remote", "get-url", "origin")
             if remote.rstrip("/").removesuffix(".git") != repository.rstrip("/").removesuffix(".git"):
                 raise RuntimeError(f"Repository directory belongs to a different remote: {destination}")
-            _git(destination, "fetch", "--no-tags", "origin", branch)
-            _git(destination, "checkout", branch)
-            _git(destination, "reset", "--hard", f"origin/{branch}")
+            # Reused single-branch clones may have a narrow fetch refspec for a different
+            # branch. Fetch the requested branch into an explicit remote-tracking ref.
+            remote_ref = f"refs/remotes/origin/{branch}"
+            _git(destination, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{remote_ref}")
+            _git(destination, "checkout", "-B", branch, remote_ref)
+            _git(destination, "reset", "--hard", remote_ref)
         else:
             destination.parent.mkdir(parents=True, exist_ok=True)
             _git(None, "clone", "--no-tags", "--single-branch", "--branch", branch, repository, str(destination))
         status = 200
     except Exception:
-        logger.exception("Git repository clone failed", extra={"log_type": "exception", "path": remote_label})
+        logger.exception(
+            "Git repository clone failed",
+            extra={"log_type": "exception", "path": remote_label, "task_id": task_id,
+                   "branch": branch, "workspace": str(destination)},
+        )
         raise
     finally:
         logger.info(
@@ -139,6 +146,8 @@ def _clone_repository(repository: str, branch: str, destination: Path) -> None:
                 "path": remote_label,
                 "status": status,
                 "duration_ms": round((time.monotonic() - started) * 1000, 2),
+                "task_id": task_id,
+                "branch": branch,
             },
         )
 
@@ -164,7 +173,7 @@ class CodingAgent:
             raise TaskInputError("Invalid branch name")
         await asyncio.to_thread(_git, None, "check-ref-format", "--branch", branch)
 
-        await asyncio.to_thread(_clone_repository, repository, branch, workdir)
+        await asyncio.to_thread(_clone_repository, repository, branch, workdir, task_id=updater.task_id)
         logger.info(
             "Coding workspace ready",
             extra={"log_type": "business", "workspace": str(workdir), "branch": branch},
@@ -174,6 +183,11 @@ class CodingAgent:
         await updater.update_status(
             state=TaskState.TASK_STATE_WORKING,
             message=new_text_message("Claude 正在分析并修改代码"),
+        )
+        logger.info(
+            "Claude task status updated; starting model request",
+            extra={"log_type": "business", "event": "task_phase", "phase": "claude_request",
+                   "workspace": str(workdir), "branch": branch, "session_id": session_id},
         )
         async def forward_message(message: object) -> None:
             if isinstance(message, ResultMessage):
@@ -189,6 +203,11 @@ class CodingAgent:
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
+        logger.info(
+            "Claude model request returned",
+            extra={"log_type": "business", "event": "task_phase", "phase": "post_claude",
+                   "workspace": str(workdir), "session_id": session_id},
+        )
         await updater.add_artifact(parts=[Part(data={"sessionId": result.session_id})])
 
         markdown_contents: list[tuple[Path, str]] = []

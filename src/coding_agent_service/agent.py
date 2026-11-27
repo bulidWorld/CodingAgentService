@@ -139,7 +139,9 @@ class AgentRouter(AgentExecutor):
             async with lock, self._semaphore:
                 logger.info(
                     "Starting agent task",
-                    extra={"log_type": "business", "task_id": task.id, "task_type": task_type},
+                    extra={"log_type": "business", "event": "task_started", "task_id": task.id,
+                           "task_type": task_type, "session_id": session_id,
+                           "branch": branch, "workspace": str(workdir)},
                 )
                 if cancel_event.is_set():
                     raise asyncio.CancelledError
@@ -164,6 +166,8 @@ class AgentRouter(AgentExecutor):
                         resume=resume_session_id is not None,
                     )
         except asyncio.CancelledError:
+            logger.info("Agent task cancelled", extra={"log_type": "business", "event": "task_finished",
+                        "task_id": task.id, "status_detail": "cancelled"})
             await updater.update_status(
                 state=TaskState.TASK_STATE_CANCELED,
                 message=new_text_message("任务已取消"),
