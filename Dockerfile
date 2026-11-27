@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" uv
 COPY pyproject.toml uv.lock ./
 COPY src ./src
 
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync -vv --frozen --no-dev --no-install-project
 
 FROM python:3.11-slim AS runtime
 
