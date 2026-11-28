@@ -24,6 +24,12 @@
             },
             {
               "data": {
+                "type": "MESSAGE",
+                "text": "Kubernetes Deployment 负责维护指定数量的 Pod 副本，并支持滚动更新和回滚。"
+              }
+            },
+            {
+              "data": {
                 "sessionId": "bdb3899d-57ab-40ea-87b4-ae7a6f5ecb0f"
               }
             }

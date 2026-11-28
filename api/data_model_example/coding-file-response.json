@@ -23,6 +23,12 @@
           "parts": [
             {
               "data": {
+                "type": "MESSAGE",
+                "text": "已修复空配置解析异常，并补充回归测试。"
+              }
+            },
+            {
+              "data": {
                 "sessionId": "0b00de62-b879-4f3e-a742-40e52cb0ed20"
               }
             }

@@ -40,12 +40,13 @@ class ChatAgent:
         result, _markdown_paths = await run_codex(
             workdir, instruction, cancel_event,
             session_id=session_id, resume=resume, chat=True,
-            task_id=updater.task_id, on_message=forward_message,
+            task_id=updater.task_id, on_message=forward_message, updater=updater,
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
         await updater.add_artifact(parts=[
             new_text_part(result.text or "模型没有返回文本内容。"),
+            new_data_part({"type": "MESSAGE", "text": result.text or "模型没有返回文本内容。"}),
             new_data_part({"sessionId": result.session_id}),
         ])
         await updater.update_status(

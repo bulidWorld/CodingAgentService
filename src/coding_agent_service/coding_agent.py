@@ -239,9 +239,21 @@ class CodingAgent:
                 message=new_text_message(message),
             )
 
-        async def report_phase(phase: str, message: str, **fields: object) -> None:
+        async def report_phase(
+            phase: str, message: str, *, notify: bool = True, **fields: object,
+        ) -> None:
+            """记录任务阶段；可选地向 A2A 客户端发送阶段状态。
+
+            参数：
+                phase: 阶段标识。
+                message: 阶段描述。
+                notify: 是否发送工作中状态事件。
+                **fields: 附加日志字段。
+            返回值：无。
+            """
             logger.info(message, extra={**context, "event": "task_phase", "phase": phase, **fields})
-            await forward_message(message)
+            if notify:
+                await forward_message(message)
 
         await report_phase("validate_repository", "正在验证仓库地址和分支")
         _validate_repository(repository)
@@ -259,12 +271,13 @@ class CodingAgent:
         result, markdown_paths = await run_codex(
             workdir, instruction, cancel_event,
             session_id=session_id, resume=resume, branch=branch,
-            task_id=updater.task_id, on_message=forward_message,
+            task_id=updater.task_id, on_message=forward_message, updater=updater,
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
         await report_phase(
             "collect_results", "Codex 执行结束，正在收集结果和 Markdown 附件",
+            notify=False,
             file_count=len(markdown_paths),
         )
         await updater.add_artifact(parts=[new_data_part({"sessionId": result.session_id})])
@@ -275,12 +288,13 @@ class CodingAgent:
                 content = await asyncio.to_thread(path.read_text, encoding="utf-8")
                 markdown_contents.append((path, content))
 
-        await report_phase("check_changes", "正在检查工作区变更")
+        await report_phase("check_changes", "正在检查工作区变更", notify=False)
         status = await asyncio.to_thread(git, workdir, "status", "--porcelain")
         # 以 porcelain 格式判断工作区是否有变更，避免解析面向人的 Git 输出。
         if not status:
-            await report_phase("publish_results", "正在发布任务结果")
+            await report_phase("publish_results", "正在发布任务结果", notify=False)
             summary = result.text or "Codex 未生成代码变更；仓库保持不变。"
+            await updater.add_artifact(parts=[new_data_part({"type": "MESSAGE", "text": summary})])
             for path, content in markdown_contents:
                 await _add_markdown_artifact(updater, path, content)
             await updater.update_status(
@@ -321,8 +335,12 @@ class CodingAgent:
             f"{prefix}: {commit_title}",
         )
         commit_sha = await asyncio.to_thread(git, workdir, "rev-parse", "HEAD")
-        await report_phase("publish_results", "本地提交已创建，正在发布任务结果", commit_sha=commit_sha)
+        await report_phase(
+            "publish_results", "本地提交已创建，正在发布任务结果",
+            notify=False, commit_sha=commit_sha,
+        )
         summary = result.text or "代码修改已完成并提交。"
+        await updater.add_artifact(parts=[new_data_part({"type": "MESSAGE", "text": summary})])
         for path, content in markdown_contents:
             await _add_markdown_artifact(updater, path, content)
         status_message = (

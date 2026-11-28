@@ -3,52 +3,22 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
+import uuid
 from collections.abc import Awaitable, Callable
-from contextlib import aclosing
-from dataclasses import dataclass
 from pathlib import Path
 
-from openai_codex import ApprovalMode, AsyncCodex, CodexConfig, Sandbox
-from openai_codex.generated.v2_all import (
-    AgentMessageDeltaNotification,
-    AgentMessageThreadItem,
-    CommandExecutionThreadItem,
-    ErrorNotification,
-    FileChangeThreadItem,
-    ItemCompletedNotification,
-    ItemStartedNotification,
-    McpToolCallThreadItem,
-    MessagePhase,
-    PatchApplyStatus,
-    ReasoningEffort,
-    ThreadTokenUsageUpdatedNotification,
-    TurnCompletedNotification,
-    TurnPlanUpdatedNotification,
-    TurnStatus,
-)
+from a2a.server.tasks import TaskUpdater
+from a2a.types import Artifact, TaskArtifactUpdateEvent
 
 from coding_agent_service.errors import TaskInputError
-from coding_agent_service.prompts import build_chat_prompt, build_coding_prompt
+from coding_agent_service.codex_executor import execute_codex
+from coding_agent_service.codex_models import CodexResult, MCP_SERVERS
+from a2a.helpers import new_data_part
 
 logger = logging.getLogger(__name__)
-
-MCP_SERVERS = {
-    "operator-agent-service": "OPERATOR_AGENT_SERVICE",
-    "pod-debug-service": "POD_DEBUG_SERVICE",
-    "ci-build-service": "CI_BUILD_SERVICE",
-}
-
-
-TOOL_LABELS = {
-    "commandExecution": "终端命令",
-    "fileChange": "文件修改",
-    "mcpToolCall": "MCP 工具",
-    "webSearch": "网页搜索",
-}
 
 HEARTBEAT_SECONDS = 30
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30 * 60
@@ -60,12 +30,6 @@ WAIT_MESSAGES = {
     "waiting_for_first_event": "正在等待 Codex 的首条事件",
     "streaming": "正在等待 Codex 的下一条进度",
 }
-
-
-@dataclass(frozen=True)
-class CodexResult:
-    session_id: str
-    text: str
 
 
 def _mcp_servers() -> dict[str, dict[str, str | bool]]:
@@ -89,15 +53,6 @@ def _mcp_servers() -> dict[str, dict[str, str | bool]]:
     return servers
 
 
-def _markdown_paths(item: FileChangeThreadItem, workdir: Path) -> set[Path]:
-    paths = set()
-    for change in item.changes:
-        path = (workdir / change.path).resolve()
-        if path.is_relative_to(workdir) and path.suffix.lower() == ".md" and path.is_file():
-            paths.add(path)
-    return paths
-
-
 async def run_codex(
     working_path: Path,
     instruction: str,
@@ -109,8 +64,24 @@ async def run_codex(
     branch: str | None = None,
     task_id: str | None = None,
     on_message: Callable[[str], Awaitable[None]] | None = None,
+    updater: TaskUpdater | None = None,
 ) -> tuple[CodexResult, list[Path]]:
-    """执行一轮 Codex 请求，返回最终回复和 Markdown 文件路径。"""
+    """执行一轮 Codex 请求并发布结构化消息和工具事件。
+
+    参数：
+        working_path: Codex 工作目录。
+        instruction: 用户输入的任务指令。
+        cancel_event: 任务取消信号。
+        session_id: 服务会话标识。
+        resume: 是否续接已有 Codex 会话。
+        chat: 是否按聊天模式执行。
+        branch: coding 会话对应的 Git 分支。
+        task_id: A2A 任务标识。
+        on_message: 可选的纯文本进度回调。
+        updater: 可选的 A2A 更新器，用于发送结构化响应事件。
+    返回：
+        Codex 最终文本结果和修改的 Markdown 文件路径。
+    """
     workdir = working_path.resolve()
     mode = "chat" if chat else "coding"
     started = time.monotonic()
@@ -141,6 +112,20 @@ async def run_codex(
             await on_message(message)
             last_progress = time.monotonic()
 
+    async def publish_response_data(data: dict[str, object]) -> None:
+        """将一个符合响应模型的结构化 data part 发布为 artifact。"""
+        if updater is None:
+            return
+        artifact = Artifact(artifact_id=str(uuid.uuid4()), parts=[new_data_part(data)])
+        await updater.event_queue.enqueue_event(
+            TaskArtifactUpdateEvent(
+                task_id=updater.task_id,
+                context_id=updater.context_id,
+                artifact=artifact,
+                last_chunk=True,
+            )
+        )
+
     async def set_phase(value: str) -> None:
         nonlocal phase
         phase = value
@@ -154,181 +139,17 @@ async def run_codex(
             await publish_progress(WAIT_MESSAGES[phase])
 
     async def execute() -> tuple[CodexResult, list[Path]]:
+        return await execute_codex(
+            working_path, instruction, session_id=session_id, resume=resume, chat=chat,
+            branch=branch, log_context=log_context, set_phase=set_phase,
+            publish_progress=publish_progress, publish_response_data=publish_response_data,
+            set_last_event_method=lambda value: _set_last_event_method(value), get_mcp_servers=_mcp_servers,
+            updater=updater,
+        )
+
+    def _set_last_event_method(value: str) -> None:
         nonlocal last_event_method
-        codex_home = Path(os.getenv("CODEX_HOME") or Path.home() / ".codex").resolve()
-        codex_home.mkdir(mode=0o700, parents=True, exist_ok=True)
-        session_file = codex_home / "coding-agent-service" / f"{session_id}.json"
-        scope = {"mode": mode, "cwd": str(workdir), "branch": branch}
-        thread_id = None
-        if resume:
-            try:
-                saved = json.loads(session_file.read_text(encoding="utf-8"))
-            except FileNotFoundError:
-                raise TaskInputError("找不到 Codex 会话，请省略 sessionId 创建新会话") from None
-            if saved["scope"] != scope:
-                raise TaskInputError("续聊必须使用原来的任务类型、仓库和分支")
-            thread_id = saved["thread_id"]
-
-        config = {"mcp_servers": {} if chat else _mcp_servers()}
-        if chat:
-            config.update({
-                "web_search": "disabled",
-                "features": {"shell_tool": False, "apps": False, "multi_agent": False},
-            })
-        logger.info(
-            "Codex runtime configuration prepared",
-            extra={**log_context, "event": "sdk_options_prepared",
-                   "model": os.getenv("CODEX_MODEL"), "mcp_server_count": len(config["mcp_servers"])},
-        )
-        gateway_url = os.getenv("CODEX_GATEWAY_BASE_URL")
-        if gateway_url:
-            if not os.getenv("CODEX_GATEWAY_API_KEY"):
-                raise RuntimeError("已配置 Codex 网关，请设置 CODEX_GATEWAY_API_KEY")
-            config["model_providers"] = {
-                "personal_gateway": {
-                    "name": "Personal Codex Gateway",
-                    "base_url": gateway_url,
-                    "wire_api": "responses",
-                    "requires_openai_auth": False,
-                    "supports_websockets": False,
-                    "env_key": "CODEX_GATEWAY_API_KEY",
-                },
-            }
-        effort = os.getenv("CODEX_REASONING_EFFORT")
-        options = dict(
-            cwd=str(workdir),
-            model=os.getenv("CODEX_MODEL") or None,
-            model_provider="personal_gateway" if gateway_url else None,
-            service_tier=os.getenv("CODEX_SERVICE_TIER") or None,
-            sandbox=Sandbox.full_access,
-            approval_mode=ApprovalMode.auto_review,
-            config=config,
-        )
-
-        markdown_files: set[Path] = set()
-        final_text = ""
-        completed = False
-        tool_started: dict[str, float] = {}
-        await set_phase("starting_sdk")
-        async with AsyncCodex(CodexConfig(cwd=str(workdir), env={"CODEX_HOME": str(codex_home)})) as codex:
-            await set_phase("opening_thread")
-            thread = (
-                await codex.thread_resume(thread_id, **options)
-                if thread_id else await codex.thread_start(**options)
-            )
-            logger.info("Codex thread ready", extra={**log_context, "event": "thread_ready", "thread_id": thread.id})
-            prompt = build_chat_prompt(instruction) if chat else build_coding_prompt(instruction)
-            await set_phase("starting_turn")
-            turn = await thread.turn(prompt, effort=ReasoningEffort(effort) if effort else None)
-            turn_context = {**log_context, "thread_id": thread.id, "turn": turn.id}
-            logger.info("Codex turn ready", extra={**turn_context, "event": "turn_ready"})
-            await set_phase("waiting_for_first_event")
-            generating_reply = False
-            try:
-                async with aclosing(turn.stream()) as stream:
-                    async for event in stream:
-                        last_event_method = event.method
-                        if phase == "waiting_for_first_event":
-                            await set_phase("streaming")
-                        payload = event.payload
-                        if isinstance(payload, ErrorNotification):
-                            logger.warning(
-                                "Codex stream reported an error",
-                                extra={**turn_context, "event": "stream_error", "will_retry": payload.will_retry},
-                            )
-                            if payload.will_retry:
-                                await publish_progress("Codex 请求遇到错误，正在重试")
-                        elif isinstance(payload, ThreadTokenUsageUpdatedNotification):
-                            logger.info(
-                                "Codex token usage updated",
-                                extra={**turn_context, "event": "token_usage",
-                                       "usage": payload.token_usage.last.model_dump()},
-                            )
-                        elif isinstance(payload, TurnPlanUpdatedNotification):
-                            labels = {"pending": "待处理", "inProgress": "进行中", "completed": "已完成"}
-                            steps = [f"[{labels.get(step.status.value, step.status.value)}] {step.step}" for step in payload.plan]
-                            logger.info(
-                                "Codex plan updated",
-                                extra={**turn_context, "event": "plan_updated",
-                                       "plan_statuses": [step.status.value for step in payload.plan]},
-                            )
-                            if steps:
-                                await publish_progress("Codex 计划更新\n" + "\n".join(steps))
-                        elif isinstance(payload, AgentMessageDeltaNotification) and payload.delta and not generating_reply:
-                            generating_reply = True
-                            logger.info("Codex reply started", extra={**turn_context, "event": "reply_started"})
-                            await publish_progress("Codex 正在生成回复")
-                        elif isinstance(payload, (ItemStartedNotification, ItemCompletedNotification)):
-                            item = payload.item.root
-                            status = "started" if isinstance(payload, ItemStartedNotification) else "completed"
-                            if item.type not in TOOL_LABELS:
-                                logger.info(
-                                    "Codex item lifecycle",
-                                    extra={**turn_context, "event": "item_lifecycle", "message_type": item.type,
-                                           "item_id": item.id, "status": status},
-                                )
-                            if isinstance(item, AgentMessageThreadItem):
-                                if isinstance(payload, ItemCompletedNotification):
-                                    if item.phase != MessagePhase.commentary:
-                                        final_text = item.text
-                                    generating_reply = False
-                                    if item.text:
-                                        await publish_progress(item.text)
-                            elif item.type in TOOL_LABELS:
-                                now = time.monotonic()
-                                if status == "started":
-                                    tool_started[item.id] = now
-                                began = tool_started.pop(item.id, None) if status == "completed" else None
-                                tool_name = item.tool if isinstance(item, McpToolCallThreadItem) else item.type
-                                status_detail = getattr(getattr(item, "status", None), "value", None)
-                                exit_code = item.exit_code if isinstance(item, CommandExecutionThreadItem) else None
-                                logger.info(
-                                    "Codex tool event",
-                                    extra={**turn_context, "event": "tool_call", "tool_name": tool_name,
-                                           "server": item.server if isinstance(item, McpToolCallThreadItem) else None,
-                                           "message_type": item.type, "tool_use_id": item.id, "status": status,
-                                           "status_detail": status_detail, "exit_code": exit_code,
-                                           "duration_ms": round((now - began) * 1000, 2) if began is not None else None},
-                                )
-                                if (
-                                    isinstance(item, FileChangeThreadItem)
-                                    and status == "completed"
-                                    and item.status == PatchApplyStatus.completed
-                                ):
-                                    markdown_files.update(_markdown_paths(item, workdir))
-                                action = "开始" if status == "started" else "结束"
-                                label = TOOL_LABELS[item.type]
-                                if isinstance(item, McpToolCallThreadItem):
-                                    label = f"{label} {item.server}/{item.tool} "
-                                detail = f"（退出码 {exit_code}）" if exit_code else ""
-                                await publish_progress(f"Codex {label}{action}{detail}")
-                        elif isinstance(payload, TurnCompletedNotification):
-                            logger.info(
-                                "Codex turn ended",
-                                extra={**turn_context, "event": "turn_ended", "status": payload.turn.status.value},
-                            )
-                            if payload.turn.status != TurnStatus.completed:
-                                detail = payload.turn.error.message if payload.turn.error else payload.turn.status.value
-                                raise RuntimeError(f"Codex 任务失败：{detail}")
-                            completed = True
-            except asyncio.CancelledError:
-                try:
-                    await asyncio.wait_for(turn.interrupt(), timeout=3)
-                except Exception:
-                    logger.debug("Codex turn interruption failed", extra=log_context, exc_info=True)
-                raise
-
-            if not completed:
-                raise RuntimeError("Codex 未返回任务完成事件")
-            if not resume:
-                session_file.parent.mkdir(parents=True, exist_ok=True)
-                temporary = session_file.with_suffix(".tmp")
-                temporary.write_text(
-                    json.dumps({"scope": scope, "thread_id": thread.id}), encoding="utf-8",
-                )
-                temporary.replace(session_file)
-                logger.info("Codex session saved", extra={**turn_context, "event": "session_saved"})
-        return CodexResult(session_id, final_text), sorted(markdown_files)
+        last_event_method = value
 
     if cancel_event.is_set():
         raise asyncio.CancelledError

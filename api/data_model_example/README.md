@@ -8,16 +8,37 @@ A2A-Version: 1.0
 Authorization: Bearer <A2A_API_TOKEN>
 ```
 
-请求结构基于 [`../a2a.json`](../a2a.json) 的 A2A `SendMessageRequest` 和 `Message`，并使用 [`../a2a_extend.json`](../a2a_extend.json) 中的 `CodingAgentSendMessageRequest`、`CodingAgentMessage`、`CodingAgentMessagePart` 和 `CodingAgentTaskPayload` 扩展模型。
+请求结构基于 [`../a2a.json`](../a2a.json) 的 A2A `SendMessageRequest` 和 `Message`，并使用 [`../a2a_extend.json`](../a2a_extend.json) 中的 `CodingAgentSendMessageRequest`、`CodingAgentRequestMessagePart` 和 `CodingAgentTaskPayload` 扩展模型。响应中的结构化事件使用 `CodingAgentResponseMessagePart` 和 `CodingAgentResponsePartData`。
 
 ## `CodingAgentMessagePart` 的含义
 
-`CodingAgentMessagePart` 的 `allOf` 要求一个 part 同时符合：
+`CodingAgentRequestMessagePart` 的 `allOf` 要求一个 part 同时符合：
 
 1. A2A 标准 `Part` 的结构。
 2. 服务扩展对 `data` 字段的约束：`data` 是包含任务字段的对象。
 
 因此，标准 part 字段仍然可用，例如 `text`；当 part 使用 `data` 时，该对象应包含服务识别的任务类型和任务字段。`allOf` 不会把 A2A 模型改写成另一种模型，而是要求同一个数据同时通过两组 schema 约束。
+
+Schema 的请求/响应边界通过模型名和 `description` 标注：`CodingAgentSendMessageRequest`、`CodingAgentRequestMessagePart`、`CodingAgentTaskPayload` 是请求模型；`CodingAgentMessage`、`CodingAgentResponseMessagePart`、`CodingAgentResponsePartData` 是响应模型。`CodingAgentMessagePart` 是旧的请求 part 别名，仅为兼容保留。
+
+## 响应中的结构化 part
+
+响应消息使用 `CodingAgentResponseMessagePart`，其 `data` 符合 `CodingAgentResponsePartData`。`data.type` 用于区分 `MESSAGE`、`TOOL_EXECUTION_START` 和 `TOOL_EXECUTION_END`。工具事件可带 `toolCallId`、`toolName`、`arguments`、`result`、`status`、`exitCode` 或 `error`；Codex SDK 未提供的字段可以省略。同一次工具调用的开始和结束事件使用 Codex item 的同一个 ID 作为 `toolCallId`。普通文本响应仍可使用 A2A 的 `text` part。
+
+例如，工具开始执行时可以这样表示：
+
+```json
+{
+  "data": {
+    "type": "TOOL_EXECUTION_START",
+    "toolCallId": "call-001",
+    "toolName": "Read",
+    "arguments": {
+      "file_path": "deploy/0010-langfuse-secrets.yaml"
+    }
+  }
+}
+```
 
 ## 示例
 
