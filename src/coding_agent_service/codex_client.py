@@ -200,8 +200,8 @@ async def run_codex(
             model=os.getenv("CODEX_MODEL") or None,
             model_provider="personal_gateway" if gateway_url else None,
             service_tier=os.getenv("CODEX_SERVICE_TIER") or None,
-            sandbox=Sandbox.read_only if chat else Sandbox.workspace_write,
-            approval_mode=ApprovalMode.deny_all,
+            sandbox=Sandbox.full_access,
+            approval_mode=ApprovalMode.auto_review,
             config=config,
         )
 
