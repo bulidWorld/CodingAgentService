@@ -10,7 +10,7 @@ data:
   PROJECTS_ROOT: /var/service/coding-agent-service/share/projects
   WORKSPACE_ROOT: /var/service/coding-agent-service/share/work
   CODEX_GATEWAY_BASE_URL: http://192.168.100.133:8787/v1
-  CODEX_MODEL: gpt-6.0-luna
+  CODEX_MODEL: gpt-6-luna
   CODEX_REASONING_EFFORT: low
   CODEX_SERVICE_TIER: default
   PUBLIC_BASE_URL: https://192.168.100.147

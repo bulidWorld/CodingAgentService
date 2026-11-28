@@ -45,17 +45,17 @@ spec:
             - name: claude-home
               mountPath: /var/service/coding-agent-service
         - name: codex-log-collector
-          image: lingxi.image.io/kunpeng/agent/coding-agent/codex-log-collector:v0.3
+          image: lingxi.image.io/kunpeng/agent/coding-agent/codex-log-collector:v0.119
           imagePullPolicy: IfNotPresent
           env:
             - name: CODEX_HOME
               value: /var/service/coding-agent-service/share/.codex
             - name: CODEX_LOG_MIN_LEVEL
-              value: WARN
+              value: INFO
             - name: CODEX_LOG_POLL_SECONDS
               value: "1"
             - name: CODEX_LOG_START_POSITION
-              value: latest
+              value: beginning
           volumeMounts:
             - name: claude-home
               mountPath: /var/service/coding-agent-service

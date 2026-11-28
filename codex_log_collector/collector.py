@@ -95,7 +95,6 @@ def forward_row(row: dict[str, Any]) -> None:
     runtime_level = str(row.get("level") or "INFO").upper()
     timestamp = row.get("ts")
     fields: dict[str, Any] = {
-        "event": "runtime_sqlite_log",
         "runtime_level": runtime_level,
         "target": row.get("target"),
         "message": redact_secrets(str(row.get("feedback_log_body") or "")),
@@ -106,7 +105,8 @@ def forward_row(row: dict[str, Any]) -> None:
         value = row.get(name)
         if value is not None:
             fields[name] = value
-    emit(runtime_level, fields.pop("message"), event="runtime_sqlite_log", **fields)
+    message = fields.pop("message")
+    emit(runtime_level, message, event="runtime_sqlite_log", **fields)
 
 
 def configured_level() -> tuple[str, int]:
