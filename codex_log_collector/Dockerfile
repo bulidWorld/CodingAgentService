@@ -9,6 +9,6 @@ ENV PYTHONUNBUFFERED=1 \
     CODEX_LOG_START_POSITION=latest
 
 WORKDIR /app
-COPY collector.py /app/collector.py
+COPY codex_log_collector/collector.py /app/collector.py
 
 ENTRYPOINT ["python", "/app/collector.py"]

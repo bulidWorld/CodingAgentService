@@ -5,9 +5,9 @@ This sidecar tails Codex app-server `logs_*.sqlite` files from a shared `CODEX_H
 Build the image from the repository root:
 
 ```sh
-docker build --provenance=false -f codex_log_collect/Dockerfile \
+docker build --provenance=false -f codex_log_collector/Dockerfile \
   -t lingxi.image.io/kunpeng/agent/coding-agent/codex-log-collector:v0.2 \
-  codex_log_collect
+  .
 ```
 
 Configuration:
