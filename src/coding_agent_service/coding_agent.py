@@ -10,6 +10,7 @@ import re
 import subprocess
 import time
 import uuid
+from functools import partial
 from pathlib import Path
 from urllib.parse import unquote, urlparse, urlsplit
 
@@ -52,6 +53,11 @@ async def _add_markdown_artifact(
             last_chunk=True,
         )
     )
+    logger.info(
+        "Markdown artifact published",
+        extra={"log_type": "llm", "provider": "codex", "task_id": updater.task_id,
+               "event": "markdown_artifact_published", "artifact_filename": filename},
+    )
 
 
 def _validate_repository(repository: str) -> None:
@@ -89,21 +95,34 @@ def _validate_repository(repository: str) -> None:
         raise TaskInputError(f"Git host is not allowed: {hostname}")
 
 
-def _git(cwd: Path | None, *args: str, timeout: int = 180) -> str:
-    """运行非交互 Git 命令；失败时保留有限长度的错误详情。"""
-    result = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-    )
-    if result.returncode:
-        detail = (result.stderr or result.stdout).strip()
-        raise RuntimeError(f"git {' '.join(args[:2])} failed: {detail[-3000:]}")
-    return result.stdout.strip()
+def _git(cwd: Path | None, *args: str, task_id: str, timeout: int = 180) -> str:
+    """运行非交互 Git 命令并记录步骤耗时。"""
+    command = "commit" if args[0] == "-c" else args[0]
+    context = {"log_type": "business", "task_id": task_id, "git_command": command}
+    started = time.monotonic()
+    logger.info("Git command started", extra={**context, "event": "git_command_started"})
+    status = "failed"
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+        if result.returncode:
+            detail = (result.stderr or result.stdout).strip()
+            raise RuntimeError(f"git {command} failed: {detail[-3000:]}")
+        status = "completed"
+        return result.stdout.strip()
+    finally:
+        logger.info(
+            "Git command ended",
+            extra={**context, "event": "git_command_ended", "status": status,
+                   "duration_ms": round((time.monotonic() - started) * 1000, 2)},
+        )
 
 
 def _clone_repository(repository: str, branch: str, tag: str, destination: Path, *, task_id: str) -> None:
@@ -112,27 +131,28 @@ def _clone_repository(repository: str, branch: str, tag: str, destination: Path,
     remote_label = f"{parsed.hostname}{parsed.path}" if parsed.hostname else re.sub(r"^.*@", "", repository)
     started = time.monotonic()
     status = 500
+    git = partial(_git, task_id=task_id)
     try:
         if destination.exists():
             if not (destination / ".git").exists():
                 raise RuntimeError(f"Repository directory already exists and is not a Git repository: {destination}")
-            existing_remote = _git(destination, "remote", "get-url", "origin")
+            existing_remote = git(destination, "remote", "get-url", "origin")
             if existing_remote.rstrip("/").removesuffix(".git") != repository.rstrip("/").removesuffix(".git"):
                 raise RuntimeError(f"Repository directory belongs to a different remote: {destination}")
         remote = "origin" if destination.exists() else repository
         git_cwd = destination if destination.exists() else None
-        found_branch = _git(git_cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
+        found_branch = git(git_cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
         if not found_branch:
             raise TaskInputError(f"Branch '{branch}' was not found in the remote repository")
         if destination.exists():
             # Reused single-branch clones may have a narrow fetch refspec for a different branch.
             branch_ref = f"refs/remotes/origin/{branch}"
-            _git(destination, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{branch_ref}")
-            _git(destination, "checkout", "-B", branch, branch_ref)
-            _git(destination, "reset", "--hard", branch_ref)
+            git(destination, "fetch", "--no-tags", "origin", f"+refs/heads/{branch}:{branch_ref}")
+            git(destination, "checkout", "-B", branch, branch_ref)
+            git(destination, "reset", "--hard", branch_ref)
         else:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            _git(None, "clone", "--no-tags", "--single-branch", "--branch", branch, repository, str(destination))
+            git(None, "clone", "--no-tags", "--single-branch", "--branch", branch, repository, str(destination))
         status = 200
     except Exception:
         logger.exception(
@@ -174,44 +194,45 @@ class CodingAgent:
         resume: bool,
     ) -> Path:
         """完成代码任务；无变更时直接返回结果，有变更时创建本地提交。"""
-        _validate_repository(repository)
-        assert branch is not None and tag is not None
-        if branch.startswith("-"):
-            raise TaskInputError("Invalid branch name")
-        await asyncio.to_thread(_git, None, "check-ref-format", "--branch", branch)
+        context = {
+            "log_type": "llm", "provider": "codex", "task_id": updater.task_id,
+            "session_id": session_id, "workspace": str(workdir), "branch": branch, "tag": tag,
+        }
+        git = partial(_git, task_id=updater.task_id)
 
-        await asyncio.to_thread(_clone_repository, repository, branch, tag, workdir, task_id=updater.task_id)
-        logger.info(
-            "Coding workspace ready",
-            extra={"log_type": "business", "workspace": str(workdir), "branch": branch, "tag": tag},
-        )
-        if cancel_event.is_set():
-            raise asyncio.CancelledError
-        await updater.update_status(
-            state=TaskState.TASK_STATE_WORKING,
-            message=new_text_message("Codex 正在分析并修改代码"),
-        )
-        logger.info(
-            "Codex task status updated; starting model request",
-            extra={"log_type": "business", "event": "task_phase", "phase": "codex_request",
-                   "workspace": str(workdir), "branch": branch, "tag": tag, "session_id": session_id},
-        )
         async def forward_message(message: str) -> None:
             await updater.update_status(
                 state=TaskState.TASK_STATE_WORKING,
                 message=new_text_message(message),
             )
 
+        async def report_phase(phase: str, message: str, **fields: object) -> None:
+            logger.info(message, extra={**context, "event": "task_phase", "phase": phase, **fields})
+            await forward_message(message)
+
+        await report_phase("validate_repository", "正在验证仓库地址和分支")
+        _validate_repository(repository)
+        assert branch is not None and tag is not None
+        if branch.startswith("-"):
+            raise TaskInputError("Invalid branch name")
+        await asyncio.to_thread(git, None, "check-ref-format", "--branch", branch)
+
+        await report_phase("prepare_repository", f"正在同步仓库分支 {branch}")
+        await asyncio.to_thread(_clone_repository, repository, branch, tag, workdir, task_id=updater.task_id)
+        if cancel_event.is_set():
+            raise asyncio.CancelledError
+        await report_phase("codex_request", "仓库已就绪，开始执行 Codex 任务")
+
         result, markdown_paths = await run_codex(
             workdir, instruction, cancel_event,
-            session_id=session_id, resume=resume, branch=branch, on_message=forward_message,
+            session_id=session_id, resume=resume, branch=branch,
+            task_id=updater.task_id, on_message=forward_message,
         )
         if cancel_event.is_set():
             raise asyncio.CancelledError
-        logger.info(
-            "Codex model request returned",
-            extra={"log_type": "business", "event": "task_phase", "phase": "post_codex",
-                   "workspace": str(workdir), "session_id": session_id},
+        await report_phase(
+            "collect_results", "Codex 执行结束，正在收集结果和 Markdown 附件",
+            file_count=len(markdown_paths),
         )
         await updater.add_artifact(parts=[new_data_part({"sessionId": result.session_id})])
 
@@ -221,9 +242,11 @@ class CodingAgent:
                 content = await asyncio.to_thread(path.read_text, encoding="utf-8")
                 markdown_contents.append((path, content))
 
-        status = await asyncio.to_thread(_git, workdir, "status", "--porcelain")
+        await report_phase("check_changes", "正在检查工作区变更")
+        status = await asyncio.to_thread(git, workdir, "status", "--porcelain")
         # 以 porcelain 格式判断工作区是否有变更，避免解析面向人的 Git 输出。
         if not status:
+            await report_phase("publish_results", "正在发布任务结果")
             summary = result.text or "Codex 未生成代码变更；仓库保持不变。"
             for path, content in markdown_contents:
                 await _add_markdown_artifact(updater, path, content)
@@ -233,8 +256,9 @@ class CodingAgent:
             )
             return workdir
 
-        await asyncio.to_thread(_git, workdir, "add", "--all")
-        staged = await asyncio.to_thread(_git, workdir, "diff", "--cached", "--name-only")
+        await report_phase("stage_changes", "正在暂存文件变更")
+        await asyncio.to_thread(git, workdir, "add", "--all")
+        staged = await asyncio.to_thread(git, workdir, "diff", "--cached", "--name-only")
         if not staged:
             await updater.update_status(
                 state=TaskState.TASK_STATE_FAILED,
@@ -247,8 +271,13 @@ class CodingAgent:
         email = os.getenv("GIT_AUTHOR_EMAIL", "coding-agent@example.invalid")
         prefix = os.getenv("GIT_COMMIT_PREFIX", "fix")
         commit_title = re.sub(r"\s+", " ", instruction).strip()[:65] or "fix bug"
+        changed_files = staged.splitlines()
+        await report_phase(
+            "commit_changes", f"正在本地提交 {len(changed_files)} 个变更文件",
+            file_count=len(changed_files),
+        )
         await asyncio.to_thread(
-            _git,
+            git,
             workdir,
             "-c",
             f"user.name={author}",
@@ -258,8 +287,8 @@ class CodingAgent:
             "-m",
             f"{prefix}: {commit_title}",
         )
-        commit_sha = await asyncio.to_thread(_git, workdir, "rev-parse", "HEAD")
-        changed_files = staged.splitlines()
+        commit_sha = await asyncio.to_thread(git, workdir, "rev-parse", "HEAD")
+        await report_phase("publish_results", "本地提交已创建，正在发布任务结果", commit_sha=commit_sha)
         summary = result.text or "代码修改已完成并提交。"
         for path, content in markdown_contents:
             await _add_markdown_artifact(updater, path, content)
@@ -271,5 +300,4 @@ class CodingAgent:
             state=TaskState.TASK_STATE_COMPLETED,
             message=new_text_message(status_message),
         )
-        logger.info("Repository bug fix committed", extra={"log_type": "business", "commit_sha": commit_sha})
         return workdir

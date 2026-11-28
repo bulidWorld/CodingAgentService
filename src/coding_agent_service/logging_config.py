@@ -19,12 +19,13 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
         for key in (
-            "trace_id", "method", "path", "status", "duration_ms", "task_id", "exceptionInfo",
+            "trace_id", "method", "path", "status", "duration_ms", "task_id", "exceptionInfo", "task_type",
             "session_id", "provider", "model", "event", "message_type", "tool_name", "tool_use_id",
             "server", "turn", "is_error", "num_turns", "cost_usd", "usage", "mode", "resume",
             "max_turns", "message_count", "tool_call_count", "subtype", "status_detail", "detail",
             "workspace", "branch", "tag", "ref", "is_tag", "phase", "git_command",
-            "mcp_server_count",
+            "mcp_server_count", "thread_id", "item_id", "commit_sha", "file_count",
+            "plan_statuses", "will_retry", "url_variable", "token_variable", "exit_code", "artifact_filename",
         ):
             value = getattr(record, key, None)
             if value is not None:

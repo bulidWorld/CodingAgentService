@@ -6,6 +6,9 @@ metadata:
 data:
   SERVICE_NAME: coding-agent-service
   PORT: "8000"
+  CODEX_HOME: /var/service/coding-agent-service/share/.codex
+  PROJECTS_ROOT: /var/service/coding-agent-service/share/projects
+  WORKSPACE_ROOT: /var/service/coding-agent-service/share/work
   CODEX_GATEWAY_BASE_URL: http://192.168.100.133:8787/v1
   CODEX_MODEL: gpt-6.2-sol
   CODEX_REASONING_EFFORT: low

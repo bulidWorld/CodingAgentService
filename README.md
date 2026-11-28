@@ -21,7 +21,7 @@ cp ".env copy.example" .env
 uvicorn coding_agent_service.server:app --app-dir src --host 0.0.0.0 --port 8000
 ```
 
-卡片地址为 `GET /.well-known/agent-card.json`。所有 `POST` A2A JSON-RPC 请求都必须带 `A2A-Version: 1.0` 和 `Authorization: Bearer <A2A_API_TOKEN>`。服务支持 A2A streaming，长任务可通过 `SendStreamingMessage` 接收状态事件。生产环境应通过 HTTPS 暴露服务。
+卡片地址为 `GET /.well-known/agent-card.json`。所有 `POST` A2A JSON-RPC 请求都必须带 `A2A-Version: 1.0` 和 `Authorization: Bearer <A2A_API_TOKEN>`。服务支持 A2A streaming，长任务可通过 `SendStreamingMessage` 接收仓库同步、Codex 会话、计划与工具、结果收集、本地提交等进度。连续等待时会收到当前 Codex 阶段和耗时。生产环境应通过 HTTPS 暴露服务。
 
 ## Agent 能力发现
 

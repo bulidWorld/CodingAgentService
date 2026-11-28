@@ -1,4 +1,14 @@
-{
+[
+  {
     "name": "coding-agent-service",
-    "path": "KunPeng/agent/coding-agent"
-}
+    "path": "KunPeng/agent/coding-agent",
+    "Dockerfile": "./Dockerfile",
+    "context": "."
+  },
+  {
+    "name": "codex-log-collector",
+    "path": "KunPeng/agent/coding-agent",
+    "Dockerfile": "./log_collector/Dockerfile",
+    "context": "."
+  }
+]
