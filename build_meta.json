@@ -8,7 +8,7 @@
   {
     "name": "codex-log-collector",
     "path": "KunPeng/agent/coding-agent",
-    "Dockerfile": "./log_collector/Dockerfile",
+    "Dockerfile": "./codex_log_collector/Dockerfile",
     "context": "."
   }
 ]
