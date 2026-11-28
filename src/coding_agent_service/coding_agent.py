@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import time
+import random
 import uuid
 from functools import partial
 from pathlib import Path
@@ -22,6 +23,36 @@ from coding_agent_service.codex_client import run_codex
 from coding_agent_service.errors import TaskInputError
 
 logger = logging.getLogger(__name__)
+
+
+def _git_with_retry(
+    cwd: Path | None, *args: str, task_id: str, attempts: int = 3, timeout: int = 180
+) -> str:
+    """对 Git 远端瞬时网络错误做有限重试。"""
+    for attempt in range(1, attempts + 1):
+        try:
+            return _git(cwd, *args, task_id=task_id, timeout=timeout)
+        except RuntimeError as exc:
+            detail = str(exc).lower()
+            transient = any(
+                marker in detail
+                for marker in (
+                    "gnutls recv error", "connection reset", "connection timed out",
+                    "could not resolve host", "failed to connect", "remote end hung up",
+                    "the tls connection was non-properly terminated",
+                )
+            )
+            if not transient or attempt == attempts:
+                raise
+            delay = min(2 ** (attempt - 1) + random.random(), 8)
+            logger.warning(
+                "Transient Git network error; retrying",
+                extra={"log_type": "business", "task_id": task_id,
+                       "git_command": args[0], "attempt": attempt,
+                       "next_attempt": attempt + 1, "retry_delay_seconds": round(delay, 2)},
+            )
+            time.sleep(delay)
+    raise RuntimeError("Git retry exhausted")
 
 
 def _markdown_description(content: str, filename: str) -> str:
@@ -141,7 +172,9 @@ def _clone_repository(repository: str, branch: str, tag: str, destination: Path,
                 raise RuntimeError(f"Repository directory belongs to a different remote: {destination}")
         remote = "origin" if destination.exists() else repository
         git_cwd = destination if destination.exists() else None
-        found_branch = git(git_cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}")
+        found_branch = _git_with_retry(
+            git_cwd, "ls-remote", "--heads", remote, f"refs/heads/{branch}", task_id=task_id
+        )
         if not found_branch:
             raise TaskInputError(f"Branch '{branch}' was not found in the remote repository")
         if destination.exists():
